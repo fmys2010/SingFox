@@ -1,0 +1,187 @@
+{
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      {
+        "type": "https",
+        "tag": "sf-local",
+        "server": "223.5.5.5"
+      },
+      {
+        "type": "https",
+        "tag": "sf-remote",
+        "server": "1.1.1.1",
+        "detour": "proxy"
+      }
+    ],
+    "final": "sf-remote",
+    "rules": [
+      {
+        "clash_mode": "Direct",
+        "server": "sf-local"
+      },
+      {
+        "clash_mode": "Global",
+        "server": "sf-remote"
+      },
+      {
+        "rule_set": [
+          "sf-geosite-private",
+          "sf-geosite-cn"
+        ],
+        "server": "sf-local"
+      },
+      {
+        "rule_set": "sf-geosite-geolocation-!cn",
+        "server": "sf-remote"
+      },
+      {
+        "action": "evaluate",
+        "server": "sf-remote"
+      },
+      {
+        "match_response": true,
+        "rule_set": "sf-geoip-cn",
+        "server": "sf-local"
+      },
+      {
+        "action": "respond"
+      }
+    ],
+    "reverse_mapping": true,
+    "optimistic": true
+  },
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "mixed-in",
+      "listen": "127.0.0.1",
+      "listen_port": 7890
+    },
+    {
+      "type": "tun",
+      "tag": "tun-in",
+      "address": [
+        "172.19.0.1/30",
+        "fdfe:dcba:9876::1/126"
+      ],
+      "auto_route": true,
+      "strict_route": true,
+      "stack": "mixed"
+    }
+  ],
+  "outbounds": [
+    {
+      "type": "vless",
+      "tag": "node",
+      "server": "node.example.com",
+      "server_port": 443,
+      "uuid": "00000000-0000-0000-0000-000000000000",
+      "tls": {
+        "enabled": true,
+        "server_name": "node.example.com"
+      }
+    },
+    {
+      "type": "selector",
+      "tag": "proxy",
+      "outbounds": [
+        "node"
+      ]
+    },
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ],
+  "route": {
+    "rules": [
+      {
+        "action": "sniff"
+      },
+      {
+        "protocol": "dns",
+        "action": "hijack-dns"
+      },
+      {
+        "clash_mode": "Direct",
+        "outbound": "direct"
+      },
+      {
+        "clash_mode": "Global",
+        "outbound": "proxy"
+      },
+      {
+        "ip_is_private": true,
+        "outbound": "direct"
+      },
+      {
+        "rule_set": [
+          "sf-geosite-private",
+          "sf-geosite-cn"
+        ],
+        "outbound": "direct"
+      },
+      {
+        "rule_set": "sf-geosite-geolocation-!cn",
+        "outbound": "proxy"
+      },
+      {
+        "action": "resolve"
+      },
+      {
+        "rule_set": "sf-geoip-cn",
+        "outbound": "direct"
+      }
+    ],
+    "rule_set": [
+      {
+        "tag": "sf-geosite-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/cn.srs",
+        "http_client": {
+          "detour": "proxy"
+        }
+      },
+      {
+        "tag": "sf-geosite-private",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/private.srs",
+        "http_client": {
+          "detour": "proxy"
+        }
+      },
+      {
+        "tag": "sf-geosite-geolocation-!cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geosite/geolocation-!cn.srs",
+        "http_client": {
+          "detour": "proxy"
+        }
+      },
+      {
+        "tag": "sf-geoip-cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://raw.githubusercontent.com/MetaCubeX/meta-rules-dat/sing/geo/geoip/cn.srs",
+        "http_client": {
+          "detour": "proxy"
+        }
+      }
+    ],
+    "final": "proxy",
+    "default_domain_resolver": "sf-local",
+    "auto_detect_interface": true
+  },
+  "experimental": {
+    "cache_file": {
+      "enabled": true
+    }
+  }
+}

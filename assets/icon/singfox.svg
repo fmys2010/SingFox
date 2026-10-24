@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <!-- Transparent canvas: no background rectangle. -->
+  <g stroke-linejoin="round" stroke-linecap="round">
+    <!-- Left/front face -->
+    <path d="M88 187
+             L254 300
+             L254 436
+             Q247 436 240 432
+             L103 341
+             Q88 331 88 314 Z"
+          fill="#9c4a1c"/>
+
+    <!-- Right/front face -->
+    <path d="M254 300
+             L422 187
+             L422 314
+             Q422 330 408 340
+             L266 432
+             Q260 436 254 436 Z"
+          fill="#c25e26"/>
+
+    <!-- Top plane -->
+    <path d="M88 187
+             Q87 181 96 175
+             L237 79
+             Q253 69 268 79
+             L414 176
+             Q422 181 422 190
+             L254 300 Z"
+          fill="#e8834a"/>
+
+    <!-- Rounded vertical corner at the front -->
+    <path d="M242 292
+             L266 292
+             L266 423
+             Q266 432 258 436
+             Q253 438 248 434
+             Q242 431 242 423 Z"
+          fill="#e8834a"/>
+
+    <!-- Packing tape: darker lower half across the top -->
+    <path d="M139 145
+             L173 122
+             L350 243
+             L314 266 Z"
+          fill="#f6d7c2"/>
+
+    <!-- Packing tape: lighter upper half across the top -->
+    <path d="M173 122
+             L195 107
+             L373 227
+             L350 243 Z"
+          fill="#fcebdd"/>
+
+    <!-- Tape folded over the right/front edge: shaded inner flap -->
+    <path d="M314 266
+             L350 243
+             L350 294
+             Q350 300 344 304
+             L330 313
+             Q323 317 318 311
+             Q314 308 314 301 Z"
+          fill="#e2b293"/>
+
+    <!-- Tape folded over the edge: outer flap -->
+    <path d="M350 243
+             L373 227
+             L373 269
+             Q373 279 364 286
+             L350 296 Z"
+          fill="#f3cdb3"/>
+  </g>
+</svg>
