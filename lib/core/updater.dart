@@ -3,7 +3,7 @@ import 'dart:io';
 
 /// Checks GitHub releases for SingFox and its core, pre-releases included.
 class Updater {
-  static const appVersion = '0.1.1-beta';
+  static const appVersion = '0.1.2-beta';
   static const appRepo = 'fmys2010/SingFox';
   static const coreRepo = 'fmys2010/singbox-x';
 
@@ -49,7 +49,7 @@ class Updater {
   }
 
   /// The newest published release, beta or not. `releases/latest` would
-  /// skip pre-releases such as 0.1.1-beta.
+  /// skip pre-releases such as 0.1.2-beta.
   static Future<Map<String, dynamic>?> _latest(String repo, int? proxyPort) async {
     final list = await _get('/repos/$repo/releases?per_page=10', proxyPort) as List?;
     return list?.cast<Map<String, dynamic>>().where((r) => r['draft'] != true).firstOrNull;

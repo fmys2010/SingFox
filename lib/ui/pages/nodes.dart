@@ -1,3 +1,4 @@
+import 'package:country_flags/country_flags.dart';
 import 'package:flutter/material.dart';
 
 import '../../core/profiles.dart';
@@ -227,7 +228,7 @@ class _NodeCard extends StatelessWidget {
               ),
               child: isGroup
                   ? Icon(Icons.hub_outlined, size: 13, color: sel ? SF.accent : SF.text2)
-                  : Text(regionOf(name), style: SF.m(11, color: sel ? SF.accent : SF.text2, weight: FontWeight.w500)),
+                  : _Flag(regionOf(name), sel: sel),
             ),
             const SizedBox(width: 14),
             Expanded(
@@ -292,4 +293,20 @@ class _Feature extends StatelessWidget {
         // widthFactor keeps the tag as narrow as its text.
         child: Center(widthFactor: 1, child: Text(text, maxLines: 1, style: SF.m(10.5, color: sel ? SF.accentText : SF.text2, height: 1))),
       );
+}
+
+/// Windows has no flag glyphs, so the country's flag is drawn as an image;
+/// unknown regions fall back to the two-letter code.
+class _Flag extends StatelessWidget {
+  const _Flag(this.code, {required this.sel});
+  final String code;
+  final bool sel;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!RegExp(r'^[A-Z]{2}$').hasMatch(code)) {
+      return Text(code, style: SF.m(11, color: sel ? SF.accent : SF.text2, weight: FontWeight.w500));
+    }
+    return CountryFlag.fromCountryCode(code, theme: const ImageTheme(width: 22, height: 15, shape: RoundedRectangle(2)));
+  }
 }
