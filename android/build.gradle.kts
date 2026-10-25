@@ -15,6 +15,15 @@ subprojects {
     val newSubprojectBuildDir: Directory = newBuildDir.dir(project.name)
     project.layout.buildDirectory.value(newSubprojectBuildDir)
 }
+// Older plugins (file_picker) still compile against SDK 34, which the
+// androidx lifecycle dependency now rejects.
+subprojects {
+    afterEvaluate {
+        extensions.findByName("android")?.let {
+            (it as com.android.build.gradle.BaseExtension).compileSdkVersion(36)
+        }
+    }
+}
 subprojects {
     project.evaluationDependsOn(":app")
 }

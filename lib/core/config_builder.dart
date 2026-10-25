@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'dns.dart';
 import 'paths.dart';
@@ -16,7 +17,9 @@ class ConfigBuilder {
   static Map<String, dynamic> build(String raw, Settings s, ProfileExtras extras) {
     final cfg = jsonDecode(raw) as Map<String, dynamic>;
 
-    cfg['log'] = {...?(cfg['log'] as Map?)?.cast<String, dynamic>(), 'level': s.logLevel, 'timestamp': true, 'disabled': false};
+    cfg['log'] = {...?(cfg['log'] as Map?)?.cast<String, dynamic>(), 'level': s.logLevel, 'timestamp': true, 'disabled': false,
+      // Android: the core runs inside the app; the log page follows this file.
+      if (Platform.isAndroid) 'output': '${Paths.I.work.path}/box.log'};
 
     cfg['inbounds'] = [
       {

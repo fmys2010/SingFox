@@ -110,8 +110,14 @@ class Settings {
     final f = Paths.I.settingsFile;
     if (await f.exists()) {
       try {
-        s._apply(jsonDecode(await f.readAsString()) as Map<String, dynamic>);
+        final j = jsonDecode(await f.readAsString()) as Map<String, dynamic>;
+        s._apply(j);
+        // Keep the API secret across launches: a core started by the Quick
+        // Settings tile outlives the app and was given the old one.
+        if (j['apiSecret'] == null) await s.save();
       } catch (_) {}
+    } else {
+      await s.save();
     }
     return s;
   }
