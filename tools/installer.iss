@@ -3,7 +3,7 @@
 ; after `flutter build windows --release` (core/ comes from build_core.ps1).
 
 #define AppName "SingFox"
-#define AppVersion "0.1.6-beta"
+#define AppVersion "1.0.0"
 #define AppExe "singfox.exe"
 #define Bundle "..\build\windows\x64\runner\Release"
 

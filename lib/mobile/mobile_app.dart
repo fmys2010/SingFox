@@ -217,7 +217,7 @@ class _ProfileSheetState extends State<_ProfileSheet> {
                               child: Column(mainAxisAlignment: MainAxisAlignment.center, crossAxisAlignment: CrossAxisAlignment.start, children: [
                                 Text(p.name, style: SF.t(14.5, weight: FontWeight.w500), overflow: TextOverflow.ellipsis),
                                 const SizedBox(height: 3),
-                                Text('${p.kindLabel} · ${profileMeta(p)}', style: SF.t(12, color: SF.text3), overflow: TextOverflow.ellipsis),
+                                Text(profileMeta(p).startsWith(p.kindLabel) ? profileMeta(p) : '${p.kindLabel} · ${profileMeta(p)}', style: SF.t(12, color: SF.text3), overflow: TextOverflow.ellipsis),
                               ]),
                             ),
                             if (p.id == s.settings.activeProfile) const Icon(Icons.check_rounded, size: 18, color: SF.accent),
