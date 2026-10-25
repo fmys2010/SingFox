@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../core/profiles.dart';
+import '../core/updater.dart';
 import '../core/site_test.dart';
 import '../state/app_state.dart';
 import '../theme.dart';
@@ -871,7 +872,7 @@ class MSettingsPage extends StatelessWidget {
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 Text('SingFox', style: SF.t(15, weight: FontWeight.w600)),
                 const SizedBox(height: 3),
-                Text('0.1.4-beta · sing-box ${s.coreVersion.isEmpty ? '—' : s.coreVersion}', style: SF.m(12, color: SF.text3)),
+                Text('${Updater.appVersion} · sing-box ${s.coreVersion.isEmpty ? '—' : s.coreVersion}', style: SF.m(12, color: SF.text3)),
               ]),
             ),
           ]),
