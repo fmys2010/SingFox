@@ -1,5 +1,7 @@
+import 'dart:ffi';
 import 'dart:io';
 
+import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:tray_manager/tray_manager.dart';
 import 'package:window_manager/window_manager.dart';
@@ -21,8 +23,28 @@ class SFTray with TrayListener {
   String _menuKey = '';
   final s = AppState.I;
 
+  /// Makes Windows draw the tray's popup menu dark, to match the app. These
+  /// are uxtheme's unnamed exports 135 (SetPreferredAppMode) and 136
+  /// (FlushMenuThemes); a Windows without them just keeps the light menu.
+  static void _darkMenus() {
+    try {
+      final k = DynamicLibrary.open('kernel32.dll');
+      final load = k.lookupFunction<IntPtr Function(Pointer<Uint16>), int Function(Pointer<Uint16>)>('LoadLibraryW');
+      final proc = k.lookupFunction<Pointer Function(IntPtr, IntPtr), Pointer Function(int, int)>('GetProcAddress');
+      final name = [...'uxtheme.dll'.codeUnits, 0];
+      final buf = calloc<Uint16>(name.length)..asTypedList(name.length).setAll(0, name);
+      final ux = load(buf);
+      calloc.free(buf);
+      final setMode = proc(ux, 135);
+      final flush = proc(ux, 136);
+      if (setMode != nullptr) setMode.cast<NativeFunction<Int32 Function(Int32)>>().asFunction<int Function(int)>()(2); // ForceDark
+      if (flush != nullptr) flush.cast<NativeFunction<Void Function()>>().asFunction<void Function()>()();
+    } catch (_) {}
+  }
+
   Future<void> init() async {
     if (!Platform.isWindows) return;
+    _darkMenus();
     trayManager.addListener(this);
     s.addListener(_sync);
     await _sync();
@@ -101,5 +123,10 @@ class SFTray with TrayListener {
   void onTrayIconMouseDown() => show();
 
   @override
-  void onTrayIconRightMouseDown() => trayManager.popUpContextMenu();
+  void onTrayIconRightMouseDown() {
+    // Without taking the foreground first, the popup menu never closes when
+    // you click elsewhere.
+    // ignore: deprecated_member_use
+    trayManager.popUpContextMenu(bringAppToFront: true);
+  }
 }
