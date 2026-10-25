@@ -70,6 +70,8 @@ type core struct {
 	lastErr string
 	logs    []logLine
 	seq     int
+	gen     int // bumped by stop(); ends a pending autostart retry loop
+	logFile *os.File
 }
 
 func configPath() string { return filepath.Join(dataDir(), "config.json") }
@@ -92,6 +94,9 @@ func (c *core) push(text string) {
 	defer c.mu.Unlock()
 	c.seq++
 	c.logs = append(c.logs, logLine{c.seq, text})
+	if c.logFile != nil {
+		_, _ = c.logFile.WriteString(text + "\n")
+	}
 	if len(c.logs) > 3000 {
 		c.logs = c.logs[len(c.logs)-2000:]
 	}
@@ -172,8 +177,65 @@ func (c *core) start() error {
 	return nil
 }
 
+// openLog keeps a copy of the log on disk: the in-memory ring is gone after
+// a reboot, which is exactly when a failed autostart needs explaining.
+func (c *core) openLog() {
+	p := filepath.Join(dataDir(), "service.log")
+	flag := os.O_CREATE | os.O_WRONLY | os.O_APPEND
+	if fi, err := os.Stat(p); err == nil && fi.Size() > 4<<20 {
+		flag |= os.O_TRUNC
+	}
+	if f, err := os.OpenFile(p, flag, 0o600); err == nil {
+		c.logFile = f
+	}
+}
+
+// autostart runs the core at boot and keeps retrying with backoff: the
+// network is often not up yet, and a core that cannot fetch its rule sets or
+// resolve its server exits at once.
+func (c *core) autostart() {
+	c.mu.Lock()
+	gen := c.gen
+	c.mu.Unlock()
+	delay := 3 * time.Second
+	for {
+		began := time.Now()
+		if err := c.start(); err != nil {
+			c.logf("autostart failed: %v", err)
+		} else {
+			c.mu.Lock()
+			done := c.done
+			c.mu.Unlock()
+			<-done
+			if time.Since(began) > 2*time.Minute {
+				delay = 3 * time.Second
+			}
+		}
+		for waited := time.Duration(0); waited < delay; waited += time.Second {
+			c.mu.Lock()
+			cancelled := c.gen != gen
+			c.mu.Unlock()
+			if cancelled {
+				return
+			}
+			time.Sleep(time.Second)
+		}
+		c.mu.Lock()
+		cancelled := c.gen != gen
+		c.mu.Unlock()
+		if cancelled {
+			return
+		}
+		c.logf("core not running, retrying autostart")
+		if delay < time.Minute {
+			delay *= 2
+		}
+	}
+}
+
 func (c *core) stop() {
 	c.mu.Lock()
+	c.gen++
 	cmd, done := c.cmd, c.done
 	c.cmd = nil
 	c.mu.Unlock()

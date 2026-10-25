@@ -29,7 +29,10 @@ class ConfigBuilder {
         {
           'type': 'tun',
           'tag': tunTag,
-          'address': ['172.19.0.1/30', 'fdfe:dcba:9876::1/126'],
+          // IPv4 only: with a v6 address the OS prefers AAAA, the TUN accepts
+          // the connection locally, and a dead v6 path then stalls the app
+          // instead of letting it fall back to v4.
+          'address': ['172.19.0.1/30'],
           'auto_route': true,
           'strict_route': s.strictRoute,
           if (s.tunStack != 'auto') 'stack': s.tunStack,
@@ -75,6 +78,15 @@ class ConfigBuilder {
     if (s.tun) route['auto_detect_interface'] = true;
     cfg['route'] = route;
     if (s.dnsMode == 'redirhost') DnsPlan.apply(cfg, s, globalTarget);
+    if (s.tun) {
+      // Answer AAAA with an empty NOERROR so apps use IPv4 straight away.
+      final dns = Map<String, dynamic>.from(cfg['dns'] as Map? ?? {});
+      dns['rules'] = [
+        {'query_type': ['AAAA'], 'action': 'predefined', 'rcode': 'NOERROR'},
+        ...?(dns['rules'] as List?),
+      ];
+      cfg['dns'] = dns;
+    }
 
     final exp = Map<String, dynamic>.from(cfg['experimental'] as Map? ?? {});
     exp['clash_api'] = {

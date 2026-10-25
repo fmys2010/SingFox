@@ -3,7 +3,7 @@ import 'dart:io';
 
 /// Checks GitHub releases for SingFox and its core, pre-releases included.
 class Updater {
-  static const appVersion = '0.1.2-beta';
+  static const appVersion = '0.1.3-beta';
   static const appRepo = 'fmys2010/SingFox';
   static const coreRepo = 'fmys2010/singbox-x';
 
