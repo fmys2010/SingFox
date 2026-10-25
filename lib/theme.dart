@@ -49,8 +49,8 @@ abstract final class SF {
 
   static Color latency(int? ms) {
     if (ms == null || ms <= 0) return bad;
-    if (ms < 80) return ok;
-    if (ms < 150) return warn;
+    if (ms <= 200) return ok;
+    if (ms <= 300) return warn;
     return bad;
   }
 

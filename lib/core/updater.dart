@@ -3,7 +3,7 @@ import 'dart:io';
 
 /// Checks GitHub releases for SingFox and its core, pre-releases included.
 class Updater {
-  static const appVersion = '0.1.3-beta';
+  static const appVersion = '0.1.4-beta';
   static const appRepo = 'fmys2010/SingFox';
   static const coreRepo = 'fmys2010/singbox-x';
 
@@ -48,6 +48,63 @@ class Updater {
     return UpdateInfo.fromRelease(r, newer: newer, commit: sha);
   }
 
+  /// Downloads the core of [info] into [dir] as `sing-box-<tag>.exe` and
+  /// returns it. A new file name each time keeps a running core's exe from
+  /// being locked, and the app's own install folder may not be writable.
+  static Future<File> downloadCore(UpdateInfo info, Directory dir, {int? proxyPort, void Function(double)? onProgress}) async {
+    final url = info.asset;
+    if (url == null) throw const HttpException('该发布没有 Windows 内核压缩包');
+    await dir.create(recursive: true);
+    final sep = Platform.pathSeparator;
+    final zip = File('${dir.path}$sep${info.tag}.zip');
+    final client = HttpClient()
+      ..connectionTimeout = const Duration(seconds: 10)
+      ..userAgent = 'SingFox/$appVersion';
+    if (proxyPort != null) client.findProxy = (_) => 'PROXY 127.0.0.1:$proxyPort';
+    try {
+      final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 15));
+      final res = await req.close().timeout(const Duration(seconds: 15));
+      if (res.statusCode != 200) throw HttpException('下载失败（HTTP ${res.statusCode}）');
+      final sink = zip.openWrite();
+      var got = 0;
+      try {
+        await for (final chunk in res.timeout(const Duration(seconds: 30))) {
+          sink.add(chunk);
+          got += chunk.length;
+          if (res.contentLength > 0) onProgress?.call(got / res.contentLength);
+        }
+      } finally {
+        await sink.close();
+      }
+    } finally {
+      client.close(force: true);
+    }
+    try {
+      if (info.sha256.isNotEmpty) {
+        final r = await Process.run('certutil', ['-hashfile', zip.path, 'SHA256']);
+        final got = RegExp(r'^[0-9a-f]{64}$', multiLine: true).firstMatch((r.stdout as String).replaceAll(' ', '').toLowerCase())?.group(0);
+        if (got != info.sha256) throw const HttpException('SHA-256 校验失败，文件已丢弃');
+      }
+      final tmp = Directory('${dir.path}${sep}extract');
+      if (await tmp.exists()) await tmp.delete(recursive: true);
+      await tmp.create();
+      final x = await Process.run('${Platform.environment['SystemRoot'] ?? 'C:/Windows'}/System32/tar.exe', ['-xf', zip.path, '-C', tmp.path]);
+      if (x.exitCode != 0) throw HttpException('解压失败：${x.stderr}');
+      // Official archives nest the exe in a folder, ours is flat.
+      final exe = await tmp.list(recursive: true).where((e) => e is File && e.path.toLowerCase().endsWith('${sep}sing-box.exe')).cast<File>().cast<File?>().firstWhere((_) => true, orElse: () => null);
+      if (exe == null) throw const HttpException('压缩包里没有 sing-box.exe');
+      final v = await Process.run(exe.path, ['version']);
+      if (v.exitCode != 0) throw const HttpException('下载的内核无法运行');
+      final dest = File('${dir.path}${sep}sing-box-${info.tag}.exe');
+      if (await dest.exists()) await dest.delete();
+      await exe.rename(dest.path);
+      await tmp.delete(recursive: true);
+      return dest;
+    } finally {
+      if (await zip.exists()) await zip.delete();
+    }
+  }
+
   /// The newest published release, beta or not. `releases/latest` would
   /// skip pre-releases such as 0.1.2-beta.
   static Future<Map<String, dynamic>?> _latest(String repo, int? proxyPort) async {
@@ -74,7 +131,9 @@ class UpdateInfo {
         name = r['name'] as String? ?? '',
         notes = r['body'] as String? ?? '',
         url = r['html_url'] as String? ?? '',
-        date = DateTime.tryParse(r['published_at'] as String? ?? '');
+        date = DateTime.tryParse(r['published_at'] as String? ?? ''),
+        asset = _windowsAsset(r),
+        sha256 = RegExp(r'SHA-256:\s*([0-9a-fA-F]{64})').firstMatch(r['body'] as String? ?? '')?.group(1)?.toLowerCase() ?? '';
 
   UpdateInfo.unpublished(String repo)
       : published = false,
@@ -83,10 +142,23 @@ class UpdateInfo {
         name = '',
         notes = '',
         commit = '',
+        asset = null,
+        sha256 = '',
         url = 'https://github.com/$repo/releases',
         date = null;
 
+  /// The core zip for 64-bit Windows, null when the release has none.
+  static String? _windowsAsset(Map<String, dynamic> r) {
+    for (final a in (r['assets'] as List? ?? [])) {
+      final name = (a as Map)['name'] as String? ?? '';
+      if (RegExp(r'^sing-box-.*windows-amd64\.zip$').hasMatch(name)) return a['browser_download_url'] as String?;
+    }
+    return null;
+  }
+
   final bool published, newer;
-  final String tag, name, notes, url, commit;
+  final String tag, name, notes, url, commit, sha256;
+  final String? asset;
   final DateTime? date;
+  bool get installable => asset != null;
 }

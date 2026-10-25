@@ -371,7 +371,7 @@ class _SettingsPageState extends State<SettingsPage> {
             ],
           ]),
         ),
-        _row('更新', '从 GitHub 发布页检查内核新版本（${Updater.coreRepo}）', SFButton(_checking == 'core' ? '检查中…' : '检查内核更新', height: 30, onTap: _checking != null ? null : () => _checkUpdate(core: true))),
+        _row('更新', '从 GitHub 发布页检查内核新版本（${Updater.coreRepo}）', SFButton(_coreProgress != null ? '下载中 $_coreProgress%' : (_checking == 'core' ? '检查中…' : '检查内核更新'), height: 30, onTap: _checking != null || _coreProgress != null ? null : () => _checkUpdate(core: true))),
         _row('运行状态', s.running ? '运行中 · 控制接口 127.0.0.1:${s.settings.apiPort}' : '未运行', Row(children: [
           SFButton('重启内核', height: 30, onTap: s.running ? s.restart : null),
           const SizedBox(width: 8),
@@ -400,6 +400,34 @@ class _SettingsPageState extends State<SettingsPage> {
   /// Which update check is running: 'app', 'core' or null.
   String? _checking;
 
+  /// Percent of the core download in progress, null when idle.
+  int? _coreProgress;
+
+  Future<void> _installCore(UpdateInfo info) async {
+    final s = AppState.I;
+    setState(() => _coreProgress = 0);
+    try {
+      final dir = Directory('${Paths.I.data.path}${Platform.pathSeparator}core');
+      final f = await Updater.downloadCore(info, dir,
+          proxyPort: s.running ? s.settings.mixedPort : null, onProgress: (p) => mounted ? setState(() => _coreProgress = (p * 100).round()) : null);
+      await s.setCorePath(f.path);
+      // Drop older downloads; the one in use is the new file.
+      for (final e in dir.listSync()) {
+        if (e is File && e.path != f.path && e.path.endsWith('.exe')) {
+          try {
+            e.deleteSync();
+          } catch (_) {}
+        }
+      }
+      if (s.running) await s.restart();
+      if (mounted) toast(context, '内核已更新到 ${info.tag}。服务里的内核需在 TUN 设置中点“更新内核”同步');
+    } catch (e) {
+      if (mounted) toast(context, '内核更新失败：$e', error: true);
+    } finally {
+      if (mounted) setState(() => _coreProgress = null);
+    }
+  }
+
   Future<void> _checkUpdate({required bool core}) async {
     final s = AppState.I;
     setState(() => _checking = core ? 'core' : 'app');
@@ -407,7 +435,7 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final info = core ? await Updater.checkCore(s.coreRevision, proxyPort: port) : await Updater.checkApp(proxyPort: port);
       if (!mounted) return;
-      await _showUpdate(core ? '内核' : 'SingFox', info);
+      await _showUpdate(core ? '内核' : 'SingFox', info, core: core);
     } catch (e) {
       if (mounted) toast(context, '检查更新失败：$e', error: true);
     } finally {
@@ -415,7 +443,7 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  Future<void> _showUpdate(String what, UpdateInfo info) {
+  Future<void> _showUpdate(String what, UpdateInfo info, {bool core = false}) {
     final (title, body) = !info.published
         ? ('$what 尚未发布版本', '发布页还没有正式版本。发布到 GitHub 后，这里会显示新版本与更新说明。')
         : info.newer
@@ -446,10 +474,21 @@ class _SettingsPageState extends State<SettingsPage> {
               Row(mainAxisAlignment: MainAxisAlignment.end, children: [
                 SFButton('关闭', onTap: () => Navigator.pop(c)),
                 const SizedBox(width: 8),
-                SFButton(info.newer ? '前往下载' : '打开发布页', kind: BtnKind.primary, onTap: () {
-                  Process.run('explorer', [info.url]);
-                  Navigator.pop(c);
-                }),
+                if (core && info.newer && info.installable) ...[
+                  SFButton('打开发布页', onTap: () {
+                    Process.run('explorer', [info.url]);
+                    Navigator.pop(c);
+                  }),
+                  const SizedBox(width: 8),
+                  SFButton('立即更新', kind: BtnKind.primary, onTap: () {
+                    Navigator.pop(c);
+                    _installCore(info);
+                  }),
+                ] else
+                  SFButton(info.newer ? '前往下载' : '打开发布页', kind: BtnKind.primary, onTap: () {
+                    Process.run('explorer', [info.url]);
+                    Navigator.pop(c);
+                  }),
               ]),
             ]),
           ),
