@@ -14,6 +14,26 @@ class ConfigBuilder {
   static const tunTag = 'singfox-tun';
   static const directTag = 'direct';
 
+  /// Rejects QUIC (UDP 443) wherever a rule sends it to a proxy, by putting a
+  /// copy of that rule, narrowed to UDP 443, in front of it. What reaches
+  /// `final` is covered by a catch-all at the end unless `final` is direct.
+  static List<Map<String, dynamic>> _rejectProxiedQuic(List<Map<String, dynamic>> rules, String direct, String? final_) {
+    const skip = {'reject', 'direct', 'block', 'dns'};
+    final out = <Map<String, dynamic>>[];
+    for (final r in rules) {
+      final to = r['outbound'];
+      final routes = to is String && to != direct && !skip.contains(to) && (r['action'] == null || r['action'] == 'route');
+      final narrowable = r['type'] != 'logical' && !r.containsKey('network') && !r.containsKey('port') && !r.containsKey('port_range');
+      if (routes && narrowable) {
+        final twin = Map<String, dynamic>.from(r)..remove('outbound');
+        out.add({...twin, 'network': 'udp', 'port': 443, 'action': 'reject'});
+      }
+      out.add(r);
+    }
+    if (final_ == null || final_ != direct) out.add({'network': 'udp', 'port': 443, 'action': 'reject'});
+    return out;
+  }
+
   static Map<String, dynamic> build(String raw, Settings s, ProfileExtras extras) {
     final cfg = jsonDecode(raw) as Map<String, dynamic>;
 
@@ -38,7 +58,13 @@ class ConfigBuilder {
           'address': ['172.19.0.1/30'],
           'auto_route': true,
           'strict_route': s.strictRoute,
-          if (s.tunStack != 'auto') 'stack': s.tunStack,
+          // Android: mixed (system stack for TCP, gVisor for UDP) is the lightest.
+          if (Platform.isAndroid && s.tunStack == 'auto')
+            'stack': 'mixed'
+          else if (s.tunStack != 'auto')
+            'stack': s.tunStack,
+          if (Platform.isAndroid && s.appList.isNotEmpty && s.appMode == 'bypass') 'exclude_package': s.appList,
+          if (Platform.isAndroid && s.appList.isNotEmpty && s.appMode == 'only') 'include_package': s.appList,
         },
     ];
 
@@ -57,7 +83,7 @@ class ConfigBuilder {
     final own = [for (final r in (route['rules'] as List? ?? [])) Map<String, dynamic>.from(r as Map)];
     final kept = [for (var i = 0; i < own.length; i++) if (!extras.disabledRules.contains(i)) own[i]];
     final hasHijack = own.any((r) => r['action'] == 'hijack-dns');
-    route['rules'] = [
+    final rules = <Map<String, dynamic>>[
       if (s.tun && !hasHijack) {'action': 'sniff'},
       if (s.tun && !hasHijack) {'protocol': 'dns', 'action': 'hijack-dns'},
       {'clash_mode': 'Direct', 'outbound': direct},
@@ -65,6 +91,7 @@ class ConfigBuilder {
       ...extras.rules,
       ...kept,
     ];
+    route['rules'] = Platform.isAndroid && !s.allowQuic ? _rejectProxiedQuic(rules, direct, route['final'] as String?) : rules;
     final ruleSets = [for (final r in (route['rule_set'] as List? ?? [])) Map<String, dynamic>.from(r as Map)];
     final tags = {for (final r in ruleSets) r['tag']};
     for (final r in extras.ruleSets) {

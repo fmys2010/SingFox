@@ -10,6 +10,7 @@ import '../theme.dart';
 import '../ui/pages/nodes.dart' show regionOf, groupDesc;
 import '../ui/pages/overview.dart' show PlanetMark, currentNode;
 import '../ui/widgets.dart';
+import 'mobile_apps.dart';
 import 'mobile_widgets.dart';
 
 String profileMeta(Profile p) {
@@ -839,6 +840,24 @@ class MSettingsPage extends StatelessWidget {
             MRow('启动后自动连接', sub: '打开 SingFox 时自动建立 VPN', trailing: MSwitch(value: st.autoConnect, onChanged: (v) => s.updateSettings((x) => x.autoConnect = v, restart: false))),
             MRow('统一延迟', sub: '测速时去掉握手耗时', trailing: MSwitch(value: st.unifiedDelay, onChanged: (v) => s.updateSettings((x) => x.unifiedDelay = v, restart: false))),
             MRow('混合端口', trailing: Text('${st.mixedPort}', style: SF.m(13, color: SF.text2)), last: true),
+          ]),
+        ),
+        section('流量'),
+        MCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(children: [
+            MRow('应用分流',
+                sub: switch (st.appMode) {
+                  'bypass' => '${st.appList.length} 个应用绕过 VPN',
+                  'only' => '仅 ${st.appList.length} 个应用走 VPN',
+                  _ => '全部应用走 VPN',
+                },
+                trailing: const Icon(Icons.chevron_right, color: SF.faint),
+                onTap: () => Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AppPickerPage()))),
+            MRow('放行 QUIC 流量',
+                sub: '关闭时拒绝经代理的 QUIC（UDP 443），应用会改用 TCP，更稳；直连不受影响',
+                last: true,
+                trailing: MSwitch(value: st.allowQuic, onChanged: (v) => s.updateSettings((x) => x.allowQuic = v))),
           ]),
         ),
         section('DNS'),

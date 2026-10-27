@@ -70,6 +70,7 @@ class _MobileShellState extends State<MobileShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final fg = state == AppLifecycleState.resumed;
+    s.setForeground(fg);
     if (fg != _foreground) {
       _foreground = fg;
       if (fg && mounted) setState(() {});

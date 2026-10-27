@@ -37,6 +37,12 @@ class Settings {
   bool closeToTray = true;
   /// Lines kept on the log page, 100 to 1000.
   int logLines = 500;
+  /// Android: let QUIC (UDP 443) through the proxy. Off rejects it so apps fall
+  /// back to TCP, which proxies better than UDP; direct traffic is untouched.
+  bool allowQuic = false;
+  /// Android per-app routing: `all`, `bypass` (listed apps skip the VPN) or `only`.
+  String appMode = 'all';
+  List<String> appList = [];
 
   static String _randomSecret() {
     final r = Random.secure();
@@ -69,6 +75,9 @@ class Settings {
         'showTray': showTray,
         'closeToTray': closeToTray,
         'logLines': logLines,
+        'allowQuic': allowQuic,
+        'appMode': appMode,
+        'appList': appList,
       };
 
   static List<String>? _list(Object? v) => switch (v) {
@@ -103,6 +112,9 @@ class Settings {
     showTray = j['showTray'] ?? showTray;
     closeToTray = j['closeToTray'] ?? closeToTray;
     logLines = j['logLines'] ?? logLines;
+    allowQuic = j['allowQuic'] ?? allowQuic;
+    appMode = j['appMode'] ?? appMode;
+    appList = _list(j['appList']) ?? appList;
   }
 
   static Future<Settings> load() async {

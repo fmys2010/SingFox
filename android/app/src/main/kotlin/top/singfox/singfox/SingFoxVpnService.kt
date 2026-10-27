@@ -151,7 +151,6 @@ class SingFoxVpnService : VpnService(), PlatformInterface, CommandServerHandler 
         if (!protect(fd)) throw Exception("protect($fd) 失败")
     }
 
-    override fun useProcFS() = false
     override fun findConnectionOwner(ipProtocol: Int, sourceAddress: String?, sourcePort: Int, destinationAddress: String?, destinationPort: Int): ConnectionOwner =
         throw Exception("unsupported")
 

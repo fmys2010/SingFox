@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/material.dart';
 
 import '../theme.dart';
@@ -213,7 +214,9 @@ class Spark extends StatelessWidget {
   Widget build(BuildContext context) => SizedBox(
         width: width,
         height: height,
-        child: RepaintBoundary(child: CustomPaint(painter: _SparkPainter(data, color))),
+        // The history list is edited in place; hand the painter a snapshot so it can
+        // tell when nothing changed and skip the repaint.
+        child: RepaintBoundary(child: CustomPaint(painter: _SparkPainter(data.sublist(max(0, data.length - 26)), color))),
       );
 }
 
@@ -224,7 +227,7 @@ class _SparkPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final raw = data.sublist(max(0, data.length - 26)).map((e) => e.toDouble()).toList();
+    final raw = data.map((e) => e.toDouble()).toList();
     if (raw.length < 4) return;
     final pts = [for (var i = 2; i < raw.length; i++) (raw[i - 2] + 2 * raw[i - 1] + 3 * raw[i]) / 6];
     final mx = max(1.0, pts.reduce(max));
@@ -247,7 +250,7 @@ class _SparkPainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(_SparkPainter old) => true;
+  bool shouldRepaint(_SparkPainter old) => old.color != color || !listEquals(old.data, data);
 }
 
 void mtoast(BuildContext context, String msg, {bool error = false}) {

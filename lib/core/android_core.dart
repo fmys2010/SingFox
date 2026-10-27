@@ -22,5 +22,13 @@ class AndroidCore {
 
   Future<String> version() async => await _method.invokeMethod<String>('version') ?? '';
 
+  /// Installed apps with a launcher entry, sorted by name.
+  Future<List<({String package, String label})>> apps() async {
+    final l = await _method.invokeMethod<List>('apps') ?? [];
+    return [for (final m in l) (package: '${(m as Map)['package']}', label: '${m['label']}')];
+  }
+
+  Future<Uint8List?> appIcon(String package) => _method.invokeMethod<Uint8List>('appIcon', {'package': package});
+
   Future<bool> isRunning() async => await _method.invokeMethod<bool>('isRunning') ?? false;
 }

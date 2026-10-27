@@ -4,6 +4,9 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import java.io.ByteArrayOutputStream
 import android.net.VpnService
 import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
@@ -49,6 +52,14 @@ class MainActivity : FlutterActivity() {
             }.start()
             "version" -> result.success(try { Libbox.version() } catch (e: Throwable) { "" })
             "isRunning" -> result.success(CoreBridge.running)
+            "apps" -> Thread {
+                val list = try { launchableApps() } catch (e: Throwable) { emptyList() }
+                runOnUiThread { result.success(list) }
+            }.start()
+            "appIcon" -> Thread {
+                val bytes = try { appIcon(call.argument<String>("package") ?: "") } catch (e: Throwable) { null }
+                runOnUiThread { result.success(bytes) }
+            }.start()
             else -> result.notImplemented()
         }
     }
@@ -66,6 +77,30 @@ class MainActivity : FlutterActivity() {
         }
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    /** Apps with a launcher entry, as `{package, label}`, sorted by label. */
+    private fun launchableApps(): List<Map<String, String>> {
+        val pm = packageManager
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        return pm.queryIntentActivities(intent, 0)
+            .map { it.activityInfo.packageName to it.loadLabel(pm).toString() }
+            .filter { it.first != packageName }
+            .distinctBy { it.first }
+            .sortedBy { it.second.lowercase() }
+            .map { mapOf("package" to it.first, "label" to it.second) }
+    }
+
+    private fun appIcon(pkg: String): ByteArray? {
+        val d = packageManager.getApplicationIcon(pkg)
+        val size = 96
+        val bmp = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val c = Canvas(bmp)
+        d.setBounds(0, 0, size, size)
+        d.draw(c)
+        val out = ByteArrayOutputStream()
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, out)
+        return out.toByteArray()
     }
 
     private fun launch() {

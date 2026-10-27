@@ -319,13 +319,15 @@ class AppState extends ChangeNotifier {
     status = CoreStatus.running;
     startedAt = DateTime.now();
     _resetLive();
-    _listen();
     await refreshProxies();
-    _proxyTimer = Timer.periodic(const Duration(seconds: 5), (_) => refreshProxies());
+    _attach();
     notifyListeners();
-    unawaited(checkExitIp());
-    unawaited(_testCurrent());
-    unawaited(testSites());
+    // Started from the tile while the app is away: skip the probes nobody sees.
+    if (_foreground) {
+      unawaited(checkExitIp());
+      unawaited(_testCurrent());
+      unawaited(testSites());
+    }
     _claimSystemProxy();
   }
 
@@ -362,21 +364,72 @@ class AppState extends ChangeNotifier {
 
   /// Android: the core writes its log to a file; follow it for the log page.
   void _tailLog(Object token) {
+    _logPos = 0;
+    _logToken = token;
+    _followLog();
+  }
+
+  void _followLog() {
+    _logTimer?.cancel();
+    final token = _logToken;
+    if (token == null || !_foreground) return;
     final f = File('${Paths.I.work.path}/box.log');
-    var pos = 0;
-    Timer.periodic(const Duration(seconds: 1), (t) async {
+    _logTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
       if (!identical(_droid, token)) return t.cancel();
       try {
         final len = await f.length();
-        if (len < pos) pos = 0;
-        if (len == pos) return;
-        final bytes = await f.openRead(pos, len).expand((b) => b).toList();
-        pos = len;
+        if (len < _logPos) _logPos = 0;
+        // Back from the background: skip what piled up beyond the last 256 KB.
+        if (len - _logPos > 262144) _logPos = len - 262144;
+        if (len == _logPos) return;
+        final bytes = await f.openRead(_logPos, len).expand((b) => b).toList();
+        _logPos = len;
         for (final line in const LineSplitter().convert(utf8.decode(bytes, allowMalformed: true))) {
           _ingest(line);
         }
       } catch (_) {}
     });
+  }
+
+  // ---------------------------------------------------------------- foreground
+
+  bool _foreground = true;
+  Timer? _logTimer;
+  Object? _logToken;
+  int _logPos = 0;
+
+  /// The live streams and timers only matter while the UI is on screen. The
+  /// core (a service) keeps running; this just stops waking the app for it.
+  void setForeground(bool fg) {
+    if (fg == _foreground) return;
+    _foreground = fg;
+    if (!running) return;
+    if (fg) {
+      _attach();
+      unawaited(refreshProxies());
+      notifyListeners();
+    } else {
+      _detach();
+    }
+  }
+
+  void _attach() {
+    if (!_foreground || api == null) return;
+    _detach();
+    _listen();
+    _proxyTimer = Timer.periodic(const Duration(seconds: 5), (_) => refreshProxies());
+    if (_droid != null) _followLog();
+  }
+
+  void _detach() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _subs.clear();
+    _proxyTimer?.cancel();
+    _proxyTimer = null;
+    _logTimer?.cancel();
+    _logTimer = null;
   }
 
   void _fail(String msg) {
@@ -419,11 +472,8 @@ class AppState extends ChangeNotifier {
   }
 
   void _teardown() {
-    for (final s in _subs) {
-      s.cancel();
-    }
-    _subs.clear();
-    _proxyTimer?.cancel();
+    _detach();
+    _logToken = null;
     api?.close();
     api = null;
     _proc = null;

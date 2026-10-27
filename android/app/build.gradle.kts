@@ -37,7 +37,8 @@ android {
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         // libbox.aar (tools/build_libbox.ps1) ships only these two.
-        ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
+        // (Not with --split-per-abi: Flutter's own ABI splits conflict with the filter.)
+        if (!project.hasProperty("split-per-abi")) ndk { abiFilters += listOf("arm64-v8a", "x86_64") }
     }
 
     signingConfigs {
