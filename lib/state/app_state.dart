@@ -286,17 +286,23 @@ class AppState extends ChangeNotifier {
     bool current() => identical(run, _proc) || identical(run, _svc) || identical(run, _droid);
 
     api = ClashApi(settings.apiPort, settings.apiSecret);
+    var rejected = false; // the API answered, but not to our secret
     Future<bool> waitApi() async {
-      for (var i = 0; i < 50; i++) {
+      for (var i = 0; i < (adopted ? 100 : 50); i++) {
         if (!current()) return false;
-        if (await api!.ping()) return true;
+        final code = await api!.probe();
+        if (code == 200) return true;
+        if (code == 401 && adopted) {
+          rejected = true;
+          return false;
+        }
         await Future.delayed(const Duration(milliseconds: 150));
       }
       return false;
     }
 
     var ready = await waitApi();
-    if (!ready && adopted && current()) {
+    if (!ready && adopted && rejected && current()) {
       try {
         _restartingCore = true;
         await AndroidCore.I.stop();

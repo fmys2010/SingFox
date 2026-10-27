@@ -22,14 +22,17 @@ class ClashApi {
     return jsonDecode(utf8.decode(r.bodyBytes));
   }
 
-  Future<bool> ping() async {
+  /// HTTP status of /version, 0 when nothing answered.
+  Future<int> probe() async {
     try {
       final r = await _client.get(_u('/version'), headers: _h).timeout(const Duration(milliseconds: 800));
-      return r.statusCode == 200;
+      return r.statusCode;
     } catch (_) {
-      return false;
+      return 0;
     }
   }
+
+  Future<bool> ping() async => await probe() == 200;
 
   Future<Map<String, dynamic>> proxies() async => (await _json(_client.get(_u('/proxies'), headers: _h)))['proxies'] as Map<String, dynamic>;
 
