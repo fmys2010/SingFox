@@ -52,6 +52,8 @@ class MainActivity : FlutterActivity() {
             }.start()
             "version" -> result.success(try { Libbox.version() } catch (e: Throwable) { "" })
             "isRunning" -> result.success(CoreBridge.running)
+            "abis" -> result.success(Build.SUPPORTED_ABIS.toList())
+            "installApk" -> result.success(installApk(call.argument<String>("path") ?: ""))
             "apps" -> Thread {
                 val list = try { launchableApps() } catch (e: Throwable) { emptyList() }
                 runOnUiThread { result.success(list) }
@@ -77,6 +79,21 @@ class MainActivity : FlutterActivity() {
         }
         @Suppress("DEPRECATION")
         super.onActivityResult(requestCode, resultCode, data)
+    }
+
+    /** Hands a downloaded APK to the system installer; `needs_permission` when the user must first allow installs from SingFox. */
+    private fun installApk(path: String): String {
+        if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+            startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, android.net.Uri.parse("package:$packageName")))
+            return "needs_permission"
+        }
+        val uri = androidx.core.content.FileProvider.getUriForFile(this, "$packageName.fileprovider", java.io.File(path))
+        startActivity(
+            Intent(Intent.ACTION_VIEW)
+                .setDataAndType(uri, "application/vnd.android.package-archive")
+                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        )
+        return "ok"
     }
 
     /** Apps with a launcher entry, as `{package, label}`, sorted by label. */

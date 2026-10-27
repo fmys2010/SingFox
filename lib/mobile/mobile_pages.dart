@@ -11,6 +11,7 @@ import '../ui/pages/nodes.dart' show regionOf, groupDesc;
 import '../ui/pages/overview.dart' show PlanetMark, currentNode;
 import '../ui/widgets.dart';
 import 'mobile_apps.dart';
+import 'mobile_update.dart';
 import 'mobile_widgets.dart';
 
 String profileMeta(Profile p) {
@@ -894,6 +895,14 @@ class MSettingsPage extends StatelessWidget {
                 Text('${Updater.appVersion} · sing-box ${s.coreVersion.isEmpty ? '—' : s.coreVersion}', style: SF.m(12, color: SF.text3)),
               ]),
             ),
+          ]),
+        ),
+        const SizedBox(height: 10),
+        MCard(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(children: [
+            MRow('检查 SingFox 更新', sub: '当前 ${Updater.appVersion}，内核随应用更新', trailing: const Icon(Icons.chevron_right, color: SF.faint), onTap: () => showUpdate(context, core: false)),
+            MRow('检查内核更新', sub: 'sing-box ${s.coreVersion.isEmpty ? '—' : s.coreVersion}', last: true, trailing: const Icon(Icons.chevron_right, color: SF.faint), onTap: () => showUpdate(context, core: true)),
           ]),
         ),
       ],

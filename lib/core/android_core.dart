@@ -30,5 +30,12 @@ class AndroidCore {
 
   Future<Uint8List?> appIcon(String package) => _method.invokeMethod<Uint8List>('appIcon', {'package': package});
 
+  /// CPU ABIs of this device, most preferred first.
+  Future<List<String>> abis() async => [for (final a in await _method.invokeMethod<List>('abis') ?? []) '$a'];
+
+  /// Opens the system installer on [path]. Returns `needs_permission` when the
+  /// user first has to allow installs from SingFox (the settings page opens).
+  Future<String> installApk(String path) async => await _method.invokeMethod<String>('installApk', {'path': path}) ?? 'ok';
+
   Future<bool> isRunning() async => await _method.invokeMethod<bool>('isRunning') ?? false;
 }
