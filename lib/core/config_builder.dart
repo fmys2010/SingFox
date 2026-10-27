@@ -13,6 +13,28 @@ class ConfigBuilder {
   static const tunTag = 'singfox-tun';
   static const directTag = 'direct';
 
+  /// QUIC that would leave through a proxy is rejected, so apps retry over
+  /// TCP. Each rule that routes to a non-direct outbound gets a twin in front
+  /// of it that only matches QUIC; whatever falls through to `final` is
+  /// covered by one last rule. Direct QUIC is left alone.
+  static List<Map<String, dynamic>> _rejectProxiedQuic(List<Map<String, dynamic>> rules, String direct, String? fin, {required bool needSniff}) {
+    const quic = {'protocol': 'quic'};
+    final out = <Map<String, dynamic>>[if (needSniff) {'action': 'sniff'}];
+    for (final r in rules) {
+      final target = r['outbound'];
+      final plain = r['action'] == null || r['action'] == 'route';
+      // A rule that already names protocols is left as the user wrote it.
+      if (plain && target is String && target != direct && target != 'block' && !r.containsKey('protocol')) {
+        out.add(r['type'] == 'logical'
+            ? {'type': 'logical', 'mode': 'and', 'rules': [Map<String, dynamic>.of(r)..remove('outbound')..remove('action'), quic], 'action': 'reject'}
+            : {...r, ...quic, 'action': 'reject'}..remove('outbound'));
+      }
+      out.add(r);
+    }
+    if (fin != direct) out.add({...quic, 'action': 'reject'});
+    return out;
+  }
+
   static Map<String, dynamic> build(String raw, Settings s, ProfileExtras extras) {
     final cfg = jsonDecode(raw) as Map<String, dynamic>;
 
@@ -54,13 +76,16 @@ class ConfigBuilder {
     final own = [for (final r in (route['rules'] as List? ?? [])) Map<String, dynamic>.from(r as Map)];
     final kept = [for (var i = 0; i < own.length; i++) if (!extras.disabledRules.contains(i)) own[i]];
     final hasHijack = own.any((r) => r['action'] == 'hijack-dns');
-    route['rules'] = [
-      if (s.tun && !hasHijack) {'action': 'sniff'},
-      if (s.tun && !hasHijack) {'protocol': 'dns', 'action': 'hijack-dns'},
+    final routed = [
       {'clash_mode': 'Direct', 'outbound': direct},
       {'clash_mode': 'Global', 'outbound': globalTarget},
       ...extras.rules,
       ...kept,
+    ];
+    route['rules'] = [
+      if (s.tun && !hasHijack) {'action': 'sniff'},
+      if (s.tun && !hasHijack) {'protocol': 'dns', 'action': 'hijack-dns'},
+      ...(s.allowQuic ? routed : _rejectProxiedQuic(routed, direct, route['final'] as String?, needSniff: !(s.tun && !hasHijack))),
     ];
     final ruleSets = [for (final r in (route['rule_set'] as List? ?? [])) Map<String, dynamic>.from(r as Map)];
     final tags = {for (final r in ruleSets) r['tag']};

@@ -206,6 +206,7 @@ class _SettingsPageState extends State<SettingsPage> {
           SFSwitch(value: st.proxyGuard && st.systemProxy, onChanged: st.systemProxy ? (v) => s.setProxyGuard(v).then((_) => setState(() {})) : null),
         ])),
         _row('允许局域网连接', '监听 ::，其他设备可使用本机代理', SFSwitch(value: st.allowLan, onChanged: (v) => s.updateSettings((x) => x.allowLan = v))),
+        _row('放行QUIC流量', st.allowQuic ? '走代理的 QUIC（HTTP/3）直接放行' : '关闭时拒绝走代理的 QUIC，应用会回退到 TCP；直连的 QUIC 不受影响', SFSwitch(value: st.allowQuic, onChanged: (v) => s.updateSettings((x) => x.allowQuic = v))),
       ]),
       _label('TUN'),
       _group([

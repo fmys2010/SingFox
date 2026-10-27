@@ -22,6 +22,9 @@ class Settings {
   String delayUrl = 'https://www.gstatic.com/generate_204';
   /// Leave the handshakes out of node delay (Clash's unified-delay).
   bool unifiedDelay = false;
+  /// Let QUIC (HTTP/3) through the proxy. Off, QUIC bound for a proxy is
+  /// rejected so apps fall back to TCP, which proxies handle far better.
+  bool allowQuic = false;
   /// `redirhost` (SingFox's leak-free split) or `profile` (keep the profile's `dns`).
   String dnsMode = 'redirhost';
   List<String> dnsLocal = ['https://223.5.5.5/dns-query'];
@@ -60,6 +63,7 @@ class Settings {
         'apiSecret': apiSecret,
         'delayUrl': delayUrl,
         'unifiedDelay': unifiedDelay,
+        'allowQuic': allowQuic,
         'dnsMode': dnsMode,
         'dnsLocal': dnsLocal,
         'dnsRemote': dnsRemote,
@@ -94,6 +98,7 @@ class Settings {
     apiSecret = j['apiSecret'] ?? apiSecret;
     delayUrl = j['delayUrl'] ?? delayUrl;
     unifiedDelay = j['unifiedDelay'] ?? unifiedDelay;
+    allowQuic = j['allowQuic'] ?? allowQuic;
     dnsMode = j['dnsMode'] ?? dnsMode;
     dnsLocal = _list(j['dnsLocal']) ?? dnsLocal;
     dnsRemote = _list(j['dnsRemote']) ?? dnsRemote;
