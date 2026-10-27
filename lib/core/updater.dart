@@ -5,7 +5,7 @@ import 'package:crypto/crypto.dart' as crypto;
 
 /// Checks GitHub releases for SingFox and its core, pre-releases included.
 class Updater {
-  static const appVersion = '1.0.0';
+  static const appVersion = '1.0.1';
   static const appRepo = 'fmys2010/SingFox';
   static const coreRepo = 'fmys2010/singbox-x';
 
