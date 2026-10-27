@@ -6,6 +6,7 @@ import 'package:flutter/rendering.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'core/autostart.dart';
+import 'mobile/mobile_app.dart';
 import 'state/app_state.dart';
 import 'theme.dart';
 import 'ui/shell.dart';
@@ -14,6 +15,11 @@ import 'ui/tray.dart';
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   await AppState.I.init();
+  if (Platform.isAndroid) {
+    runApp(const MobileApp());
+    if (AppState.I.settings.autoConnect) Future.delayed(const Duration(seconds: 1), AppState.I.start);
+    return;
+  }
   final st = AppState.I.settings;
   // Launched at login with 静默启动: stay in the tray.
   final hidden = args.contains(Autostart.flag) && st.silentStart && st.showTray;

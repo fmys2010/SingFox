@@ -4,7 +4,9 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart' show PlatformException;
 
+import '../core/android_core.dart';
 import '../core/clash_api.dart';
 import '../core/config_builder.dart';
 import '../core/exit_ip.dart';
@@ -79,7 +81,10 @@ class AppState extends ChangeNotifier {
   Process? _proc;
   /// Set while the core runs inside singfox-service (TUN without elevation).
   _ServiceRun? _svc;
-  bool get _active => _proc != null || _svc != null;
+  /// Set while the core runs inside the Android VpnService.
+  Object? _droid;
+  bool _restartingCore = false;
+  bool get _active => _proc != null || _svc != null || _droid != null;
   ClashApi? api;
   final List<StreamSubscription> _subs = [];
   Timer? _proxyTimer;
@@ -118,7 +123,27 @@ class AppState extends ChangeNotifier {
     settings = await Settings.load();
     await profiles.load();
     if (active == null && profiles.items.isNotEmpty) settings.activeProfile = profiles.items.first.id;
-    _locateCore();
+    if (Platform.isAndroid) {
+      settings.tun = true;
+      unawaited(AndroidCore.I.version().then((v) {
+        coreVersion = v;
+        notifyListeners();
+      }, onError: (_) {}));
+      AndroidCore.I.states.listen((e) {
+        final d = _droid;
+        if (_restartingCore) return;
+        if (e['running'] != true && d != null && status != CoreStatus.stopping) {
+          _onExit(d, '${e['error'] ?? ''}'.isEmpty ? 'VPN 已断开' : e['error']);
+        } else if (e['running'] == true && d == null) {
+          // Connected from the Quick Settings tile: pick up the running core.
+          unawaited(start());
+        }
+      });
+      // The tile may have connected while the app was closed.
+      unawaited(AndroidCore.I.isRunning().then((on) => on ? start() : null));
+    } else {
+      _locateCore();
+    }
     Timer.periodic(const Duration(minutes: 10), (_) => _autoUpdate());
   }
 
@@ -195,9 +220,10 @@ class AppState extends ChangeNotifier {
     if (status == CoreStatus.running || status == CoreStatus.starting) return;
     error = null;
     final p = active;
-    if (coreBinary == null) return _fail('找不到 sing-box 内核，请在设置中指定内核路径');
-    if (p == null) return _fail('还没有配置，请先在左上角增加配置');
-    final viaService = settings.tun && !PlatformHelper.isAdmin();
+    final android = Platform.isAndroid;
+    if (!android && coreBinary == null) return _fail('找不到 sing-box 内核，请在设置中指定内核路径');
+    if (p == null) return _fail(android ? '还没有配置，请先增加配置' : '还没有配置，请先在左上角增加配置');
+    final viaService = !android && settings.tun && !PlatformHelper.isAdmin();
     if (viaService && !await HelperService.I.available()) {
       return _fail('TUN 需要管理员权限：请以管理员身份运行，或在 设置 → 网络 中安装服务');
     }
@@ -214,12 +240,31 @@ class AppState extends ChangeNotifier {
     } catch (e) {
       return _fail('生成配置失败：$e');
     }
-    final check = await Process.run(coreBinary!, ['check', '-c', Paths.I.runtimeConfig.path, '-D', Paths.I.work.path, '--disable-color']);
-    if (check.exitCode != 0) {
-      return _fail('配置校验失败：${(check.stderr as String).trim().split('\n').last}');
+    if (!android) {
+      final check = await Process.run(coreBinary!, ['check', '-c', Paths.I.runtimeConfig.path, '-D', Paths.I.work.path, '--disable-color']);
+      if (check.exitCode != 0) {
+        return _fail('配置校验失败：${(check.stderr as String).trim().split('\n').last}');
+      }
     }
     final Object run;
-    if (viaService) {
+    var adopted = false;
+    if (android) {
+      final token = _droid = Object();
+      run = token;
+      try {
+        // Already up (started from the tile): attach to it; if its API does not
+        // answer to our secret (config from an older session), restart it.
+        if (await AndroidCore.I.isRunning()) {
+          adopted = true;
+        } else {
+          await AndroidCore.I.start(await Paths.I.runtimeConfig.readAsString());
+        }
+      } catch (e) {
+        if (identical(_droid, token)) _droid = null;
+        return _fail('启动 VPN 失败：${e is PlatformException ? (e.message ?? e.code) : e}');
+      }
+      _tailLog(token);
+    } else if (viaService) {
       try {
         final seq = (await HelperService.I.status())?['seq'] as int? ?? 0;
         await HelperService.I.start(await Paths.I.runtimeConfig.readAsString());
@@ -238,25 +283,51 @@ class AppState extends ChangeNotifier {
       unawaited(proc.exitCode.then((code) => _onExit(proc, '代码 $code')));
       run = proc;
     }
-    bool current() => identical(run, _proc) || identical(run, _svc);
+    bool current() => identical(run, _proc) || identical(run, _svc) || identical(run, _droid);
 
     api = ClashApi(settings.apiPort, settings.apiSecret);
-    for (var i = 0; i < 50; i++) {
-      if (!current()) return;
-      if (await api!.ping()) break;
-      await Future.delayed(const Duration(milliseconds: 150));
+    var rejected = false; // the API answered, but not to our secret
+    Future<bool> waitApi() async {
+      for (var i = 0; i < (adopted ? 100 : 50); i++) {
+        if (!current()) return false;
+        final code = await api!.probe();
+        if (code == 200) return true;
+        if (code == 401 && adopted) {
+          rejected = true;
+          return false;
+        }
+        await Future.delayed(const Duration(milliseconds: 150));
+      }
+      return false;
+    }
+
+    var ready = await waitApi();
+    if (!ready && adopted && rejected && current()) {
+      try {
+        _restartingCore = true;
+        await AndroidCore.I.stop();
+        await AndroidCore.I.start(await Paths.I.runtimeConfig.readAsString());
+        _restartingCore = false;
+        ready = await waitApi();
+      } catch (e) {
+        _restartingCore = false;
+        _droid = null;
+        return _fail('重启 VPN 失败：${e is PlatformException ? (e.message ?? e.code) : e}');
+      }
     }
     if (!current()) return;
     status = CoreStatus.running;
     startedAt = DateTime.now();
     _resetLive();
-    _listen();
     await refreshProxies();
-    _proxyTimer = Timer.periodic(const Duration(seconds: 5), (_) => refreshProxies());
+    _attach();
     notifyListeners();
-    unawaited(checkExitIp());
-    unawaited(_testCurrent());
-    unawaited(testSites());
+    // Started from the tile while the app is away: skip the probes nobody sees.
+    if (_foreground) {
+      unawaited(checkExitIp());
+      unawaited(_testCurrent());
+      unawaited(testSites());
+    }
     _claimSystemProxy();
   }
 
@@ -291,6 +362,76 @@ class AppState extends ChangeNotifier {
     if (name.isNotEmpty) await testDelay([name]);
   }
 
+  /// Android: the core writes its log to a file; follow it for the log page.
+  void _tailLog(Object token) {
+    _logPos = 0;
+    _logToken = token;
+    _followLog();
+  }
+
+  void _followLog() {
+    _logTimer?.cancel();
+    final token = _logToken;
+    if (token == null || !_foreground) return;
+    final f = File('${Paths.I.work.path}/box.log');
+    _logTimer = Timer.periodic(const Duration(seconds: 1), (t) async {
+      if (!identical(_droid, token)) return t.cancel();
+      try {
+        final len = await f.length();
+        if (len < _logPos) _logPos = 0;
+        // Back from the background: skip what piled up beyond the last 256 KB.
+        if (len - _logPos > 262144) _logPos = len - 262144;
+        if (len == _logPos) return;
+        final bytes = await f.openRead(_logPos, len).expand((b) => b).toList();
+        _logPos = len;
+        for (final line in const LineSplitter().convert(utf8.decode(bytes, allowMalformed: true))) {
+          _ingest(line);
+        }
+      } catch (_) {}
+    });
+  }
+
+  // ---------------------------------------------------------------- foreground
+
+  bool _foreground = true;
+  Timer? _logTimer;
+  Object? _logToken;
+  int _logPos = 0;
+
+  /// The live streams and timers only matter while the UI is on screen. The
+  /// core (a service) keeps running; this just stops waking the app for it.
+  void setForeground(bool fg) {
+    if (fg == _foreground) return;
+    _foreground = fg;
+    if (!running) return;
+    if (fg) {
+      _attach();
+      unawaited(refreshProxies());
+      notifyListeners();
+    } else {
+      _detach();
+    }
+  }
+
+  void _attach() {
+    if (!_foreground || api == null) return;
+    _detach();
+    _listen();
+    _proxyTimer = Timer.periodic(const Duration(seconds: 5), (_) => refreshProxies());
+    if (_droid != null) _followLog();
+  }
+
+  void _detach() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _subs.clear();
+    _proxyTimer?.cancel();
+    _proxyTimer = null;
+    _logTimer?.cancel();
+    _logTimer = null;
+  }
+
   void _fail(String msg) {
     error = msg;
     status = CoreStatus.stopped;
@@ -317,7 +458,7 @@ class AppState extends ChangeNotifier {
   }
 
   void _onExit(Object run, String detail) {
-    if (!identical(run, _proc) && !identical(run, _svc)) return;
+    if (!identical(run, _proc) && !identical(run, _svc) && !identical(run, _droid)) return;
     _teardown();
     final wasStopping = status == CoreStatus.stopping;
     status = CoreStatus.stopped;
@@ -331,19 +472,27 @@ class AppState extends ChangeNotifier {
   }
 
   void _teardown() {
-    for (final s in _subs) {
-      s.cancel();
-    }
-    _subs.clear();
-    _proxyTimer?.cancel();
+    _detach();
+    _logToken = null;
     api?.close();
     api = null;
     _proc = null;
     _svc?.timer?.cancel();
     _svc = null;
+    _droid = null;
   }
 
   Future<void> stop() async {
+    final droid = _droid;
+    if (droid != null) {
+      status = CoreStatus.stopping;
+      notifyListeners();
+      try {
+        await AndroidCore.I.stop();
+      } catch (_) {}
+      _onExit(droid, '已停止');
+      return;
+    }
     final svc = _svc;
     if (svc != null) {
       status = CoreStatus.stopping;

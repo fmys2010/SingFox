@@ -49,3 +49,6 @@ app.*.map.json
 
 # sing-box core, built by tools/build_core.ps1
 /core/
+
+# Android core library, built by tools/build_libbox.ps1
+/android/app/libs/
