@@ -37,7 +37,7 @@ class ExitIpService {
       ..findProxy = (_) => 'PROXY 127.0.0.1:$proxyPort';
     try {
       final req = await client.getUrl(Uri.parse(url));
-      req.headers.set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SingFox');
+      req.headers.set('User-Agent', Platform.isMacOS ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) SingFox' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SingFox');
       final res = await req.close().timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) throw HttpException('IPPure 返回 HTTP ${res.statusCode}');
       return _parse(jsonDecode(await res.transform(utf8.decoder).join()) as Map<String, dynamic>);

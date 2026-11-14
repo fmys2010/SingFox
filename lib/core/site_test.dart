@@ -25,7 +25,7 @@ Future<int> probeSite(Site site, int mixedPort, {Duration timeout = const Durati
   final client = HttpClient()
     ..findProxy = ((_) => 'PROXY 127.0.0.1:$mixedPort')
     ..connectionTimeout = timeout
-    ..userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SingFox';
+    ..userAgent = Platform.isMacOS ? 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) SingFox' : 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) SingFox';
   final watch = Stopwatch()..start();
   try {
     final req = await client.openUrl('HEAD', Uri.parse(site.url)).timeout(timeout);

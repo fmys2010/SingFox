@@ -43,8 +43,8 @@ class SFTray with TrayListener {
   }
 
   Future<void> init() async {
-    if (!Platform.isWindows) return;
-    _darkMenus();
+    if (!Platform.isWindows && !Platform.isMacOS) return;
+    if (Platform.isWindows) _darkMenus();
     trayManager.addListener(this);
     s.addListener(_sync);
     await _sync();
@@ -58,7 +58,7 @@ class SFTray with TrayListener {
         _menuKey = '';
         return trayManager.destroy();
       }
-      await trayManager.setIcon('assets/tray/tray.ico');
+      await trayManager.setIcon(Platform.isWindows ? 'assets/tray/tray.ico' : 'assets/tray/tray.png', iconSize: 16);
     }
     if (!want) return;
     final st = s.settings;
@@ -120,10 +120,20 @@ class SFTray with TrayListener {
   }
 
   @override
-  void onTrayIconMouseDown() => show();
+  void onTrayIconMouseDown() {
+    if (Platform.isMacOS) {
+      trayManager.popUpContextMenu();
+    } else {
+      show();
+    }
+  }
 
   @override
   void onTrayIconRightMouseDown() {
+    if (Platform.isMacOS) {
+      show();
+      return;
+    }
     // Without taking the foreground first, the popup menu never closes when
     // you click elsewhere.
     // ignore: deprecated_member_use

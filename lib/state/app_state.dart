@@ -223,9 +223,15 @@ class AppState extends ChangeNotifier {
     final android = Platform.isAndroid;
     if (!android && coreBinary == null) return _fail('找不到 sing-box 内核，请在设置中指定内核路径');
     if (p == null) return _fail(android ? '还没有配置，请先增加配置' : '还没有配置，请先在左上角增加配置');
-    final viaService = !android && settings.tun && !PlatformHelper.isAdmin();
-    if (viaService && !await HelperService.I.available()) {
-      return _fail('TUN 需要管理员权限：请以管理员身份运行，或在 设置 → 网络 中安装服务');
+    final viaService = !android && Platform.isWindows && settings.tun && !PlatformHelper.isAdmin();
+    if (!android && settings.tun && !PlatformHelper.isAdmin()) {
+      if (Platform.isWindows) {
+        if (!await HelperService.I.available()) {
+          return _fail('TUN 需要管理员权限：请以管理员身份运行，或在 设置 → 网络 中安装服务');
+        }
+      } else {
+        return _fail('TUN 需要管理员权限，请在 设置 → 网络 中点“以管理员重启”');
+      }
     }
     status = CoreStatus.starting;
     notifyListeners();

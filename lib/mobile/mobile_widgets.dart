@@ -15,15 +15,18 @@ class MCard extends StatelessWidget {
   final Color? color, borderColor;
 
   @override
-  Widget build(BuildContext context) => Container(
-        padding: padding,
-        decoration: BoxDecoration(
-          color: color ?? SF.surface,
-          border: Border.all(color: borderColor ?? SF.line),
-          borderRadius: BorderRadius.circular(radius),
-        ),
-        child: child,
-      );
+  Widget build(BuildContext context) {
+    final bg = color ?? SF.surface;
+    return Container(
+      padding: padding,
+      decoration: BoxDecoration(
+        color: bg,
+        border: Border.all(color: borderColor ?? bg),
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: child,
+    );
+  }
 }
 
 class MSwitch extends StatelessWidget {

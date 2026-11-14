@@ -61,7 +61,7 @@ class MOverviewPage extends StatelessWidget {
           child: Container(
             height: 60,
             padding: const EdgeInsets.symmetric(horizontal: 12),
-            decoration: BoxDecoration(color: SF.surface, border: Border.all(color: SF.line), borderRadius: BorderRadius.circular(12)),
+            decoration: BoxDecoration(color: SF.surface, border: Border.all(color: SF.surface), borderRadius: BorderRadius.circular(12)),
             child: Row(children: [
               _Avatar(p?.initial ?? '+'),
               const SizedBox(width: 12),
@@ -603,7 +603,7 @@ class _NodeCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 14),
         decoration: BoxDecoration(
           color: sel ? SF.accent.withValues(alpha: .07) : SF.surface,
-          border: Border.all(color: sel ? SF.accent.withValues(alpha: .6) : SF.line),
+          border: Border.all(color: sel ? SF.accent.withValues(alpha: .6) : SF.surface),
           borderRadius: BorderRadius.circular(12),
         ),
         child: Row(children: [

@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:singfox/core/autostart.dart';
 import 'package:singfox/core/config_builder.dart';
 import 'package:singfox/core/dns.dart';
 import 'package:singfox/core/paths.dart';
@@ -52,6 +53,8 @@ void main() {
     expect(rules.where((r) => r['domain_suffix'] != null), isEmpty, reason: 'disabled rule removed');
     expect(rules.any((r) => r['clash_mode'] == 'Global'), isTrue);
     expect((cfg['inbounds'] as List).map((i) => i['type']), ['mixed', 'tun']);
+    final tun = (cfg['inbounds'] as List).firstWhere((i) => i['type'] == 'tun') as Map;
+    expect(tun['route_exclude_address'], ConfigBuilder.tunRouteExcludeAddress);
     expect((cfg['outbounds'] as List).any((o) => o['type'] == 'direct'), isTrue);
 
     final f = File('${tmp.path}/cfg.json')..writeAsStringSync(jsonEncode(cfg));
@@ -114,8 +117,26 @@ void main() {
     expect(on, isA<bool>());
     expect(server, isA<String>());
     expect(SystemProxy.serverFor(7890), '127.0.0.1:7890');
-  }, skip: !Platform.isWindows);
+  }, skip: !Platform.isWindows && !Platform.isMacOS);
 
+  test('macOS networksetup parsing and LaunchAgent plist', () {
+    expect(
+      SystemProxy.parseMacServices('An asterisk (*) denotes that a network service is disabled.\nWi-Fi\n*Bluetooth PAN\nThunderbolt Bridge\n'),
+      ['Wi-Fi', 'Thunderbolt Bridge'],
+    );
+    expect(
+      SystemProxy.parseMacProxyOutput('Enabled: Yes\nServer: 127.0.0.1\nPort: 7890\nAuthenticated Proxy Enabled: 0\n'),
+      (true, '127.0.0.1:7890'),
+    );
+    expect(
+      SystemProxy.parseMacProxyOutput('Enabled: No\nServer: \nPort: 0\n'),
+      (false, ''),
+    );
+    final plist = Autostart.buildMacPlist('/Applications/SingFox.app/Contents/MacOS/SingFox');
+    expect(plist, contains('<string>top.singfox.singfox</string>'));
+    expect(plist, contains('<string>/Applications/SingFox.app/Contents/MacOS/SingFox</string>'));
+    expect(plist, contains('<string>--autostart</string>'));
+  });
   test('update check reports an unpublished repository (network)', () async {
     final info = await Updater.checkCore('2b90409');
     expect(info.published, isFalse);

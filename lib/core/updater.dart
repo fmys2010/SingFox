@@ -3,9 +3,10 @@ import 'dart:io';
 
 import 'package:crypto/crypto.dart' as crypto;
 
+import 'platform.dart';
 /// Checks GitHub releases for SingFox and its core, pre-releases included.
 class Updater {
-  static const appVersion = '1.0.2';
+  static const appVersion = '1.0.3';
   static const appRepo = 'fmys2010/SingFox';
   static const coreRepo = 'fmys2010/singbox-x';
 
@@ -50,15 +51,16 @@ class Updater {
     return UpdateInfo.fromRelease(r, newer: newer, commit: sha);
   }
 
-  /// Downloads the core of [info] into [dir] as `sing-box-<tag>.exe` and
-  /// returns it. A new file name each time keeps a running core's exe from
+  /// Downloads the core of [info] into [dir] as `sing-box-<tag>(.exe)` and
+  /// returns it. A new file name each time keeps a running core binary from
   /// being locked, and the app's own install folder may not be writable.
   static Future<File> downloadCore(UpdateInfo info, Directory dir, {int? proxyPort, void Function(double)? onProgress}) async {
     final url = info.asset;
-    if (url == null) throw const HttpException('该发布没有 Windows 内核压缩包');
+    if (url == null) throw HttpException('该发布没有适用当前系统的内核压缩包');
     await dir.create(recursive: true);
     final sep = Platform.pathSeparator;
-    final zip = File('${dir.path}$sep${info.tag}.zip');
+    final isTarGz = url.endsWith('.tar.gz');
+    final archive = File('${dir.path}$sep${info.tag}${isTarGz ? '.tar.gz' : '.zip'}');
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10)
       ..userAgent = 'SingFox/$appVersion';
@@ -67,7 +69,7 @@ class Updater {
       final req = await client.getUrl(Uri.parse(url)).timeout(const Duration(seconds: 15));
       final res = await req.close().timeout(const Duration(seconds: 15));
       if (res.statusCode != 200) throw HttpException('下载失败（HTTP ${res.statusCode}）');
-      final sink = zip.openWrite();
+      final sink = archive.openWrite();
       var got = 0;
       try {
         await for (final chunk in res.timeout(const Duration(seconds: 30))) {
@@ -82,31 +84,39 @@ class Updater {
       client.close(force: true);
     }
     try {
-      if (info.sha256.isNotEmpty) {
-        final r = await Process.run('certutil', ['-hashfile', zip.path, 'SHA256']);
-        final got = RegExp(r'^[0-9a-f]{64}$', multiLine: true).firstMatch((r.stdout as String).replaceAll(' ', '').toLowerCase())?.group(0);
-        if (got != info.sha256) throw const HttpException('SHA-256 校验失败，文件已丢弃');
+      final expectedSha = info.sha256ForAsset(info.assetName ?? '');
+      if (expectedSha.isNotEmpty) {
+        final got = (await crypto.sha256.bind(archive.openRead()).first).toString();
+        if (got != expectedSha) throw const HttpException('SHA-256 校验失败，文件已丢弃');
       }
       final tmp = Directory('${dir.path}${sep}extract');
       if (await tmp.exists()) await tmp.delete(recursive: true);
       await tmp.create();
-      final x = await Process.run('${Platform.environment['SystemRoot'] ?? 'C:/Windows'}/System32/tar.exe', ['-xf', zip.path, '-C', tmp.path]);
+      final tarBin = Platform.isWindows ? '${Platform.environment['SystemRoot'] ?? 'C:/Windows'}/System32/tar.exe' : 'tar';
+      final x = await Process.run(tarBin, ['-xf', archive.path, '-C', tmp.path]);
       if (x.exitCode != 0) throw HttpException('解压失败：${x.stderr}');
-      // Official archives nest the exe in a folder, ours is flat.
-      final exe = await tmp.list(recursive: true).where((e) => e is File && e.path.toLowerCase().endsWith('${sep}sing-box.exe')).cast<File>().cast<File?>().firstWhere((_) => true, orElse: () => null);
-      if (exe == null) throw const HttpException('压缩包里没有 sing-box.exe');
+      final targetName = Platform.isWindows ? 'sing-box.exe' : 'sing-box';
+      final exe = await tmp
+          .list(recursive: true)
+          .where((e) => e is File && e.path.toLowerCase().endsWith('$sep$targetName'))
+          .cast<File>()
+          .cast<File?>()
+          .firstWhere((_) => true, orElse: () => null);
+      if (exe == null) throw HttpException('压缩包里没有 $targetName');
+      if (!Platform.isWindows) await Process.run('chmod', ['+x', exe.path]);
       final v = await Process.run(exe.path, ['version']);
       if (v.exitCode != 0) throw const HttpException('下载的内核无法运行');
-      final dest = File('${dir.path}${sep}sing-box-${info.tag}.exe');
+      final ext = Platform.isWindows ? '.exe' : '';
+      final dest = File('${dir.path}${sep}sing-box-${info.tag}$ext');
       if (await dest.exists()) await dest.delete();
       await exe.rename(dest.path);
+      if (!Platform.isWindows) await Process.run('chmod', ['+x', dest.path]);
       await tmp.delete(recursive: true);
       return dest;
     } finally {
-      if (await zip.exists()) await zip.delete();
+      if (await archive.exists()) await archive.delete();
     }
   }
-
   /// The newest core release against the version bundled in this app, by dotted
   /// number. Android ships the core inside the APK.
   static Future<UpdateInfo> checkBundledCore(String version, {int? proxyPort}) async {
@@ -177,7 +187,8 @@ class UpdateInfo {
         notes = r['body'] as String? ?? '',
         url = r['html_url'] as String? ?? '',
         date = DateTime.tryParse(r['published_at'] as String? ?? ''),
-        asset = _windowsAsset(r),
+        asset = _coreAsset(r)?.$2,
+        assetName = _coreAsset(r)?.$1,
         assets = [
           for (final a in (r['assets'] as List? ?? []))
             (name: (a as Map)['name'] as String? ?? '', url: a['browser_download_url'] as String? ?? '')
@@ -192,6 +203,7 @@ class UpdateInfo {
         notes = '',
         commit = '',
         asset = null,
+        assetName = null,
         assets = const [],
         sha256 = '',
         url = 'https://github.com/$repo/releases',
@@ -199,13 +211,19 @@ class UpdateInfo {
 
   /// The SHA-256 the notes give for the APK: a line that mentions the APK or
   /// its file name. Empty when the notes have none.
-  String sha256ForApk(String name) {
-    for (final line in notes.split('\n')) {
-      if (!line.contains('APK') && !line.contains(name)) continue;
-      final m = RegExp(r'\b[0-9a-fA-F]{64}\b').firstMatch(line);
-      if (m != null) return m.group(0)!.toLowerCase();
+  String sha256ForApk(String name) => sha256ForAsset(name, fallbackTag: 'APK');
+
+  /// The SHA-256 the notes give for [name], falling back to the single `SHA-256:`
+  /// field when the release only lists one digest.
+  String sha256ForAsset(String name, {String? fallbackTag}) {
+    if (name.isNotEmpty) {
+      for (final line in notes.split('\n')) {
+        if (!line.contains(name) && (fallbackTag == null || !line.contains(fallbackTag))) continue;
+        final m = RegExp(r'\b[0-9a-fA-F]{64}\b').firstMatch(line);
+        if (m != null) return m.group(0)!.toLowerCase();
+      }
     }
-    return '';
+    return sha256;
   }
 
   /// The Android APK for the first of [abis] the release has one for; a lone
@@ -220,18 +238,33 @@ class UpdateInfo {
     return apks.length == 1 ? apks.first : null;
   }
 
-  /// The core zip for 64-bit Windows, null when the release has none.
-  static String? _windowsAsset(Map<String, dynamic> r) {
-    for (final a in (r['assets'] as List? ?? [])) {
-      final name = (a as Map)['name'] as String? ?? '';
-      if (RegExp(r'^sing-box-.*windows-amd64\.zip$').hasMatch(name)) return a['browser_download_url'] as String?;
+  /// Picks the matching core archive for the current desktop OS and arch.
+  static (String, String)? _coreAsset(Map<String, dynamic> r) {
+    final List<RegExp> patterns;
+    if (Platform.isWindows) {
+      patterns = [RegExp(r'^sing-box-.*windows-amd64\.zip$')];
+    } else if (Platform.isMacOS) {
+      final arch = PlatformHelper.macArch();
+      patterns = [
+        RegExp('^sing-box-.*darwin-$arch\\.tar\\.gz\$'),
+        if (arch == 'arm64') RegExp(r'^sing-box-.*darwin-amd64\.tar\.gz$'),
+      ];
+    } else {
+      return null;
+    }
+    for (final re in patterns) {
+      for (final a in (r['assets'] as List? ?? [])) {
+        final name = (a as Map)['name'] as String? ?? '';
+        final url = a['browser_download_url'] as String? ?? '';
+        if (re.hasMatch(name) && url.isNotEmpty) return (name, url);
+      }
     }
     return null;
   }
 
   final bool published, newer;
   final String tag, name, notes, url, commit, sha256;
-  final String? asset;
+  final String? asset, assetName;
   final List<({String name, String url})> assets;
   final DateTime? date;
   bool get installable => asset != null;

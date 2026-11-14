@@ -20,8 +20,13 @@ class Autostart {
 
   static String get _exe => Platform.resolvedExecutable;
 
+  static const _macLabel = 'top.singfox.singfox';
+
+  static String get _macPlistPath => '${Platform.environment['HOME'] ?? ''}/Library/LaunchAgents/$_macLabel.plist';
+
   /// Switches to [mode], undoing the others. Returns an error message.
   static Future<String?> apply(String mode, {String? core}) async {
+    if (Platform.isMacOS) return _applyMac(mode);
     if (!Platform.isWindows) return null;
     if (mode != 'registry') await Process.run('reg', ['delete', _runKey, '/v', _task, '/f']);
     if (mode != 'task' && await _taskExists()) {
@@ -54,6 +59,44 @@ class Autostart {
         return null;
     }
     return null;
+  }
+
+  static Future<String?> _applyMac(String mode) async {
+    final plist = File(_macPlistPath);
+    if (mode == 'off') {
+      if (await plist.exists()) {
+        await Process.run('launchctl', ['unload', plist.path]);
+        await plist.delete();
+      }
+      return null;
+    }
+    if (mode != 'registry' && mode != 'launchagent') return '当前系统不支持该自启方式';
+    await plist.parent.create(recursive: true);
+    final xml = buildMacPlist(_exe);
+    await plist.writeAsString(xml);
+    await Process.run('launchctl', ['unload', plist.path]);
+    final r = await Process.run('launchctl', ['load', plist.path]);
+    return r.exitCode == 0 ? null : '写入 LaunchAgent 失败';
+  }
+
+  static String buildMacPlist(String executable) {
+    String esc(String s) => s.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;');
+    return '''<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+\t<key>Label</key>
+\t<string>$_macLabel</string>
+\t<key>ProgramArguments</key>
+\t<array>
+\t\t<string>${esc(executable)}</string>
+\t\t<string>$flag</string>
+\t</array>
+\t<key>RunAtLoad</key>
+\t<true/>
+</dict>
+</plist>
+''';
   }
 
   static Future<bool> _taskExists() async => (await Process.run('schtasks', ['/Query', '/TN', _task])).exitCode == 0;

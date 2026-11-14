@@ -26,13 +26,16 @@ class Paths {
   }
 
   /// The sing-box binary: an explicit override, the copy shipped next to the
-  /// app (`core/` beside the executable), or the repo's `core/` in development.
+  /// app (`core/` beside the executable, or `../Resources/core/` inside a
+  /// macOS `.app` bundle), or the repo's `core/` in development.
   static String? findCore([String? override]) {
     final exe = Platform.isWindows ? 'sing-box.exe' : 'sing-box';
     final sep = Platform.pathSeparator;
+    final exeDir = File(Platform.resolvedExecutable).parent;
     final candidates = <String>[
       if (override != null && override.isNotEmpty) override,
-      '${File(Platform.resolvedExecutable).parent.path}${sep}core$sep$exe',
+      '${exeDir.path}${sep}core$sep$exe',
+      if (Platform.isMacOS) '${exeDir.parent.path}${sep}Resources${sep}core$sep$exe',
       '${Directory.current.path}${sep}core$sep$exe',
     ];
     for (final c in candidates) {

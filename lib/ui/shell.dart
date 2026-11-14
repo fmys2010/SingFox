@@ -403,15 +403,26 @@ class _TitleBar extends StatelessWidget {
       decoration: const BoxDecoration(border: Border(bottom: BorderSide(color: SF.lineSoft))),
       child: Row(children: [
         Expanded(
-          child: DragToMoveArea(
-            child: Container(
-              color: Colors.transparent,
-              padding: const EdgeInsets.only(left: 16),
-              child: Row(children: [
-                CustomPaint(size: const Size(18, 18), painter: AppMark()),
-                const SizedBox(width: 10),
-                Text('SingFox', style: SF.t(13, weight: FontWeight.w600)),
-              ]),
+          child: GestureDetector(
+            onDoubleTap: Platform.isMacOS
+                ? () async {
+                    if (await windowManager.isMaximized()) {
+                      await windowManager.unmaximize();
+                    } else {
+                      await windowManager.maximize();
+                    }
+                  }
+                : null,
+            child: DragToMoveArea(
+              child: Container(
+                color: Colors.transparent,
+                padding: EdgeInsets.only(left: Platform.isMacOS ? 78 : 16),
+                child: Row(children: [
+                  CustomPaint(size: const Size(18, 18), painter: AppMark()),
+                  const SizedBox(width: 10),
+                  Text('SingFox', style: SF.t(13, weight: FontWeight.w600)),
+                ]),
+              ),
             ),
           ),
         ),

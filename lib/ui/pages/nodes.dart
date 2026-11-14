@@ -212,7 +212,7 @@ class _NodeCard extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: sel ? SF.accent.withValues(alpha: .07) : SF.surface,
-            border: Border.all(color: sel ? SF.accent.withValues(alpha: .6) : SF.line),
+            border: Border.all(color: sel ? SF.accent.withValues(alpha: .6) : SF.surface),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Row(children: [

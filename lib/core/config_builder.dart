@@ -14,6 +14,16 @@ class ConfigBuilder {
   static const tunTag = 'singfox-tun';
   static const directTag = 'direct';
 
+  /// Overlay and virtual-LAN ranges (CGNAT / Tailscale / NetBird, Radmin VPN,
+  /// LogMeIn Hamachi, Docker bridge, Benchmark / EasyTier / WireGuard) left
+  /// out of the desktop TUN route so peer traffic stays on its own adapter.
+  static const tunRouteExcludeAddress = [
+    '100.64.0.0/10',
+    '26.0.0.0/8',
+    '25.0.0.0/8',
+    '172.17.0.0/16',
+    '198.18.0.0/15',
+  ];
   /// Rejects QUIC (UDP 443) wherever a rule sends it to a proxy, by putting a
   /// copy of that rule, narrowed to UDP 443, in front of it. What reaches
   /// `final` is covered by a catch-all at the end unless `final` is direct.
@@ -58,6 +68,7 @@ class ConfigBuilder {
           'address': ['172.19.0.1/30'],
           'auto_route': true,
           'strict_route': s.strictRoute,
+          if (!Platform.isAndroid) 'route_exclude_address': tunRouteExcludeAddress,
           // Android: mixed (system stack for TCP, gVisor for UDP) is the lightest.
           if (Platform.isAndroid && s.tunStack == 'auto')
             'stack': 'mixed'

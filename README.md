@@ -1,6 +1,6 @@
 # SingFox
 
-基于 [sing-box](https://github.com/SagerNet/sing-box) 的桌面客户端，Flutter 编写，目前支持 Windows。
+基于 [sing-box](https://github.com/SagerNet/sing-box) 的桌面客户端，Flutter 编写，支持 Windows 与 macOS（Intel / Apple Silicon）。
 内核使用带 XHTTP 与 VLESS Encryption 的分支 [singbox-x](https://github.com/fmys2010/singbox-x)。
 
 ## 功能
@@ -21,4 +21,11 @@ tools/build_core.ps1 -Source "path\to\singbox-x"
 flutter build windows --release
 # 安装包（需要 Inno Setup 6）
 iscc tools/installer.iss
+```
+
+macOS（Intel x86_64 与 Apple Silicon arm64，需要在 macOS 上构建）：
+
+```bash
+# 同时打包 Apple Silicon (arm64) 与 Intel (x64) 的 .app 和 .dmg
+./tools/build_macos.sh --arch both --source "path/to/singbox-x"
 ```

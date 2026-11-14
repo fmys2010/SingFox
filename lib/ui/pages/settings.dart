@@ -41,6 +41,7 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _checkService() async {
+    if (!Platform.isWindows) return;
     final ok = await HelperService.I.available();
     if (mounted) setState(() => _service = ok);
   }
@@ -190,7 +191,7 @@ class _SettingsPageState extends State<SettingsPage> {
             s.updateSettings((x) => x.mixedPort = p);
           },
         )),
-        _row('系统代理', '连接时把 Windows 系统代理指向混合端口，切换无需重启内核', SFSwitch(value: st.systemProxy, onChanged: (v) => s.setSystemProxy(v).then((_) => setState(() {})))),
+        _row('系统代理', '连接时把${Platform.isMacOS ? ' macOS ' : ' Windows '}系统代理指向混合端口，切换无需重启内核', SFSwitch(value: st.systemProxy, onChanged: (v) => s.setSystemProxy(v).then((_) => setState(() {})))),
         _row('代理守卫', st.systemProxy ? '每 ${st.proxyGuardSeconds} 秒检查一次，系统代理被其他程序改掉时自动恢复' : '需要先开启系统代理', Row(children: [
           if (st.systemProxy && st.proxyGuard) ...[
             Segmented<int>(
@@ -216,9 +217,9 @@ class _SettingsPageState extends State<SettingsPage> {
               ? '创建虚拟网卡接管系统流量'
               : _service == true
                   ? '通过 SingFox 服务运行，无需管理员权限'
-                  : '需要管理员权限，或先安装下方的 SingFox 服务',
+                  : (Platform.isWindows ? '需要管理员权限，或先安装下方的 SingFox 服务' : '需要管理员权限（将以管理员密码授权重启 SingFox）'),
           Row(children: [
-            if (!PlatformHelper.isAdmin() && _service != true && Platform.isWindows) ...[
+            if (!PlatformHelper.isAdmin() && _service != true && (Platform.isWindows || Platform.isMacOS)) ...[
               SFButton('以管理员重启', height: 30, onTap: () async {
                 await s.shutdown();
                 await PlatformHelper.relaunchAsAdmin();
@@ -264,20 +265,26 @@ class _SettingsPageState extends State<SettingsPage> {
   List<Widget> _startup() {
     final s = AppState.I;
     final st = s.settings;
+    final mac = Platform.isMacOS;
+    final effectiveAutostart = mac && st.autostart != 'off' && st.autostart != 'registry' ? 'off' : st.autostart;
     return [
       _label('开机自启', first: true),
       _group([
         _row(
           '自启方式',
-          switch (st.autostart) {
-            'task' => '计划任务：登录后以最高权限启动，TUN 可直接使用',
-            'registry' => '系统设置：写入当前用户的启动项，可在任务管理器中管理',
-            'service' => '服务：开机即由 SingFox 服务启动内核，无需登录；界面不自动打开',
-            _ => '不随系统启动',
-          },
+          mac
+              ? (effectiveAutostart == 'registry' ? '登录项：写入 ~/Library/LaunchAgents，登录后自动启动' : '不随系统启动')
+              : switch (st.autostart) {
+                  'task' => '计划任务：登录后以最高权限启动，TUN 可直接使用',
+                  'registry' => '系统设置：写入当前用户的启动项，可在任务管理器中管理',
+                  'service' => '服务：开机即由 SingFox 服务启动内核，无需登录；界面不自动打开',
+                  _ => '不随系统启动',
+                },
           Segmented<String>(
-            options: const [('off', '关闭'), ('task', '计划任务'), ('registry', '系统设置'), ('service', '服务')],
-            value: st.autostart,
+            options: mac
+                ? const [('off', '关闭'), ('registry', '登录自启')]
+                : const [('off', '关闭'), ('task', '计划任务'), ('registry', '系统设置'), ('service', '服务')],
+            value: effectiveAutostart,
             dense: true,
             background: SF.bg,
             onChanged: _busy
@@ -358,7 +365,9 @@ class _SettingsPageState extends State<SettingsPage> {
           s.coreBinary ?? '未找到内核',
           Row(children: [
             SFButton('选择内核…', height: 30, onTap: () async {
-              final r = await FilePicker.platform.pickFiles(dialogTitle: '选择 sing-box 可执行文件', type: FileType.custom, allowedExtensions: ['exe']);
+              final r = Platform.isWindows
+                  ? await FilePicker.platform.pickFiles(dialogTitle: '选择 sing-box 可执行文件', type: FileType.custom, allowedExtensions: ['exe'])
+                  : await FilePicker.platform.pickFiles(dialogTitle: '选择 sing-box 可执行文件');
               final p = r?.files.single.path;
               if (p != null) await s.setCorePath(p);
               setState(() {});
@@ -376,7 +385,7 @@ class _SettingsPageState extends State<SettingsPage> {
         _row('运行状态', s.running ? '运行中 · 控制接口 127.0.0.1:${s.settings.apiPort}' : '未运行', Row(children: [
           SFButton('重启内核', height: 30, onTap: s.running ? s.restart : null),
           const SizedBox(width: 8),
-          SFButton('打开数据目录', height: 30, onTap: () => Process.run('explorer', [Paths.I.data.path])),
+          SFButton('打开数据目录', height: 30, onTap: () => PlatformHelper.openTarget(Paths.I.data.path)),
         ])),
       ]),
     ];
@@ -414,14 +423,20 @@ class _SettingsPageState extends State<SettingsPage> {
       await s.setCorePath(f.path);
       // Drop older downloads; the one in use is the new file.
       for (final e in dir.listSync()) {
-        if (e is File && e.path != f.path && e.path.endsWith('.exe')) {
+        final name = e.uri.pathSegments.last;
+        if (e is File && e.path != f.path && name.startsWith('sing-box-')) {
           try {
             e.deleteSync();
           } catch (_) {}
         }
       }
       if (s.running) await s.restart();
-      if (mounted) toast(context, '内核已更新到 ${info.tag}。服务里的内核需在 TUN 设置中点“更新内核”同步');
+      if (mounted) {
+        toast(
+          context,
+          Platform.isWindows ? '内核已更新到 ${info.tag}。服务里的内核需在 TUN 设置中点“更新内核”同步' : '内核已更新到 ${info.tag}',
+        );
+      }
     } catch (e) {
       if (mounted) toast(context, '内核更新失败：$e', error: true);
     } finally {
@@ -477,7 +492,7 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(width: 8),
                 if (core && info.newer && info.installable) ...[
                   SFButton('打开发布页', onTap: () {
-                    Process.run('explorer', [info.url]);
+                    PlatformHelper.openTarget(info.url);
                     Navigator.pop(c);
                   }),
                   const SizedBox(width: 8),
@@ -487,7 +502,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   }),
                 ] else
                   SFButton(info.newer ? '前往下载' : '打开发布页', kind: BtnKind.primary, onTap: () {
-                    Process.run('explorer', [info.url]);
+                    PlatformHelper.openTarget(info.url);
                     Navigator.pop(c);
                   }),
               ]),
