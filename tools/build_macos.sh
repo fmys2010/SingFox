@@ -25,7 +25,7 @@ case "$ARCH" in
   *) echo "Unsupported --arch: $ARCH (expected arm64, x86_64, or both)" >&2; exit 2 ;;
 esac
 
-VERSION="$(grep -E '^version:' "$ROOT/pubspec.yaml" | head -n1 | sed -E 's/^version:\s*([^+]+).*/\1/' | tr -d '\r')"
+VERSION="$(grep -E '^version:' "$ROOT/pubspec.yaml" | head -n1 | sed -E 's/^version:[[:space:]]*([^+]+).*/\1/' | tr -d '\r')"
 TAGS="with_quic,with_dhcp,with_wireguard,with_utls,with_acme,with_clash_api,with_gvisor,badlinkname,tfogo_checklinkname0"
 LDFLAGS="-X runtime.godebugDefault=multipathtcp=0,tlssha1=1 -checklinkname=0 -s -w -buildid="
 
