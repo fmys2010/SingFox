@@ -124,6 +124,9 @@ class SingFoxVpnService : VpnService(), PlatformInterface, CommandServerHandler 
     override fun openTun(options: TunOptions): Int {
         if (prepare(this) != null) throw Exception("没有 VPN 权限")
         val b = Builder().setSession("SingFox").setMtu(options.mtu)
+        // VPNs count as metered by default since Android 10, so apps on Wi-Fi think they use mobile data.
+        // Unmetered here means the VPN inherits meteredness from its underlying network instead.
+        if (Build.VERSION.SDK_INT >= 29) b.setMetered(false)
         options.inet4Address.forEach { b.addAddress(it.address(), it.prefix()) }
         options.inet6Address.forEach { b.addAddress(it.address(), it.prefix()) }
         if (options.autoRoute) {
@@ -171,13 +174,24 @@ class SingFoxVpnService : VpnService(), PlatformInterface, CommandServerHandler 
         refresh()
     }
 
-    /** The first usable (internet, not VPN) network becomes the core's underlay. */
+    /**
+     * The best usable (internet, not VPN) network becomes the core's underlay: validated before
+     * unvalidated, then Ethernet / Wi-Fi before cellular, the same order Android uses for its default.
+     */
     @Synchronized
     private fun refresh() {
-        val best = cm.allNetworks.firstOrNull {
-            val c = cm.getNetworkCapabilities(it)
-            c != null && c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) && !c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)
-        }
+        val best = cm.allNetworks.mapNotNull { n ->
+            val c = cm.getNetworkCapabilities(n) ?: return@mapNotNull null
+            if (!c.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) || c.hasTransport(NetworkCapabilities.TRANSPORT_VPN)) return@mapNotNull null
+            val validated = if (c.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)) 0 else 10
+            val transport = when {
+                c.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> 0
+                c.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> 1
+                c.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> 2
+                else -> 3
+            }
+            n to validated + transport
+        }.minByOrNull { it.second }?.first
         defaultNetwork = best
         val name = best?.let { cm.getLinkProperties(it)?.interfaceName }
         val l = listener ?: return

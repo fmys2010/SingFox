@@ -38,4 +38,11 @@ class AndroidCore {
   Future<String> installApk(String path) async => await _method.invokeMethod<String>('installApk', {'path': path}) ?? 'ok';
 
   Future<bool> isRunning() async => await _method.invokeMethod<bool>('isRunning') ?? false;
+
+  /// Whether SingFox is exempt from battery optimization. Without it HyperOS /
+  /// MIUI freeze the core with the screen off and the tunnel goes dead.
+  Future<bool> isBatteryExempt() async => await _method.invokeMethod<bool>('isBatteryExempt') ?? true;
+
+  /// Opens the system "ignore battery optimizations" prompt; true when already exempt.
+  Future<bool> requestBatteryExemption() async => await _method.invokeMethod<bool>('requestBatteryExemption') ?? true;
 }

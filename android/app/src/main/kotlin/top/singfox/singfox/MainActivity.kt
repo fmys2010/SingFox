@@ -1,7 +1,11 @@
 package top.singfox.singfox
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Activity
+import android.net.Uri
+import android.os.PowerManager
+import android.provider.Settings
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
@@ -53,6 +57,8 @@ class MainActivity : FlutterActivity() {
             "version" -> result.success(try { Libbox.version() } catch (e: Throwable) { "" })
             "isRunning" -> result.success(CoreBridge.running)
             "abis" -> result.success(Build.SUPPORTED_ABIS.toList())
+            "isBatteryExempt" -> result.success(isBatteryExempt())
+            "requestBatteryExemption" -> result.success(requestBatteryExemption(force = true))
             "installApk" -> result.success(installApk(call.argument<String>("path") ?: ""))
             "apps" -> Thread {
                 val list = try { launchableApps() } catch (e: Throwable) { emptyList() }
@@ -130,6 +136,29 @@ class MainActivity : FlutterActivity() {
         java.io.File(filesDir, "box-config.json").writeText(config)
         val intent = Intent(this, SingFoxVpnService::class.java)
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent) else startService(intent)
+        requestBatteryExemption(force = false)
+    }
+
+    private fun isBatteryExempt(): Boolean =
+        Build.VERSION.SDK_INT < 23 || (getSystemService(POWER_SERVICE) as PowerManager).isIgnoringBatteryOptimizations(packageName)
+
+    /**
+     * Asks for "ignore battery optimizations". Without it HyperOS / MIUI freeze the process and cut
+     * its network while the screen is off: the VPN still shows as connected but every connection
+     * dies inside the tunnel. Asked once on the first connect unless [force] (from the UI).
+     */
+    @SuppressLint("BatteryLife")
+    private fun requestBatteryExemption(force: Boolean): Boolean {
+        if (isBatteryExempt()) return true
+        val prefs = getSharedPreferences("singfox_native", MODE_PRIVATE)
+        if (!force && prefs.getBoolean("battery_asked", false)) return false
+        prefs.edit().putBoolean("battery_asked", true).apply()
+        try {
+            startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+        } catch (_: Throwable) {
+            try { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } catch (_: Throwable) {}
+        }
+        return false
     }
 
     companion object {
