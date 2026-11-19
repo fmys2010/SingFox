@@ -55,13 +55,22 @@ class HelperService {
     await _client.post(Uri.parse('$_base/autostart'), headers: _h, body: jsonEncode({'autostart': on})).timeout(const Duration(seconds: 5));
   }
 
-  /// The service binary shipped next to [core].
-  static String serviceExe(String core) => '${File(core).parent.path}\\singfox-service.exe';
+  /// The service binary. The core may live elsewhere (an in-app update puts
+  /// it in the data folder), so the copy shipped with the app comes first.
+  static String? serviceExe(String core) {
+    final appDir = File(Platform.resolvedExecutable).parent.path;
+    final installed = '${Platform.environment['ProgramFiles'] ?? 'C:/Program Files'}/SingFox Service';
+    for (final dir in ['$appDir/core', File(core).parent.path, '${Directory.current.path}/core', installed]) {
+      final f = '$dir/singfox-service.exe';
+      if (File(f).existsSync()) return f.replaceAll('/', '\\');
+    }
+    return null;
+  }
 
   /// Installs (or reinstalls, updating the core copy) with one UAC prompt.
   Future<String?> install(String core) async {
     final exe = serviceExe(core);
-    if (!File(exe).existsSync()) return '找不到 singfox-service.exe';
+    if (exe == null) return '找不到 singfox-service.exe';
     final sid = await PlatformHelper.userSid();
     if (sid == null) return '无法获取当前用户 SID';
     final code = await PlatformHelper.runElevated(exe, ['install', '--user-sid', sid, '--core', core]);
@@ -75,7 +84,9 @@ class HelperService {
   }
 
   Future<String?> uninstall(String core) async {
-    final code = await PlatformHelper.runElevated(serviceExe(core), ['uninstall']);
+    final exe = serviceExe(core);
+    if (exe == null) return '找不到 singfox-service.exe';
+    final code = await PlatformHelper.runElevated(exe, ['uninstall']);
     _token = null;
     return code == 0 ? null : (code == -1 ? '已取消授权' : '卸载失败（代码 $code）');
   }
